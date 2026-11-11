@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>同一道题，四个模型：互动视频对比</title>
+<meta name="description" content="同一份考题、同样的推理强度，四个 AI 模型各做一部可以动手的互动短片。">
+<style>
+  :root {
+    --paper: #f6f2ea;
+    --ink: #1f1d1a;
+    --soft: #6b655c;
+    --line: #ddd5c6;
+    --card: #fffdf8;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", Georgia, serif;
+    line-height: 1.75;
+  }
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: clamp(40px, 9vw, 104px) clamp(20px, 5vw, 48px) 72px;
+  }
+  .kicker {
+    font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 13px;
+    letter-spacing: 0.24em;
+    color: var(--soft);
+    margin: 0 0 20px;
+  }
+  h1 {
+    font-size: clamp(34px, 6.4vw, 62px);
+    line-height: 1.22;
+    font-weight: 700;
+    margin: 0 0 24px;
+    letter-spacing: 0.02em;
+    text-wrap: balance;
+  }
+  .lede {
+    font-size: clamp(16px, 2vw, 19px);
+    color: var(--soft);
+    max-width: 34em;
+    margin: 0 0 clamp(40px, 7vw, 72px);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
+    gap: 20px;
+  }
+  a.card {
+    display: flex;
+    flex-direction: column;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 30px 30px 26px;
+    text-decoration: none;
+    color: inherit;
+    transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+  }
+  a.card:hover, a.card:focus-visible {
+    transform: translateY(-3px);
+    border-color: var(--ink);
+    box-shadow: 0 14px 34px -20px rgba(31, 29, 26, .5);
+    outline: none;
+  }
+  .model {
+    font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    color: var(--soft);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .card h2 {
+    font-size: clamp(26px, 3.4vw, 32px);
+    line-height: 1.3;
+    margin: 14px 0 12px;
+    font-weight: 700;
+  }
+  .card p { margin: 0 0 24px; color: #3d3933; font-size: 16px; }
+  .go {
+    margin-top: auto;
+    font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    border-top: 1px solid var(--line);
+    padding-top: 16px;
+    color: var(--soft);
+  }
+  .go b { color: var(--ink); font-weight: 600; }
+  footer {
+    margin-top: clamp(40px, 7vw, 72px);
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    color: var(--soft);
+    font-size: 14.5px;
+    font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  footer p { margin: 0 0 8px; max-width: 44em; }
+  @media (prefers-reduced-motion: reduce) {
+    a.card { transition: none; }
+    a.card:hover { transform: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <p class="kicker">互动视频 · 四选四看</p>
+  <h1>同一道题，四个模型</h1>
+  <p class="lede">题目只有一句：做一部让人惊艳的互动视频。题材、风格、技术全由模型自己决定，下面是四份答卷。</p>
+
+  <div class="grid">
+    <a class="card" href="fable/">
+      <span class="model"><span class="dot" style="background:#c9962a"></span>Claude Fable 5.2</span>
+      <h2>风的形状</h2>
+      <p>你就是风。吹醒一片草原，带着一粒蒲公英种子从清晨走到深夜。片尾，你这几分钟的轨迹会被画成星空里的一条光带。</p>
+      <span class="go"><span>约 3 分 20 秒 · 鼠标</span><b>进入 →</b></span>
+    </a>
+
+    <a class="card" href="opus/">
+      <span class="model"><span class="dot" style="background:#2b2b2b"></span>Claude Opus 5.5</span>
+      <h2>留白</h2>
+      <p>一卷从空白宣纸开始的水墨手卷。画山、引雨、领雁、点梅、盖印，卷尾有一首照着你的落笔写成的题诗。</p>
+      <span class="go"><span>约 3 分 15 秒 · 鼠标</span><b>进入 →</b></span>
+    </a>
+
+    <a class="card" href="carbon/">
+      <span class="model"><span class="dot" style="background:#d2622b"></span>Gemini 4 Carbon</span>
+      <h2>修昼人</h2>
+      <p>白昼沉进了镜海。你是陪守灯学徒同行的风与折光，点亮窗火、拨弦催花、校准铜环，最后亲手把太阳补好。</p>
+      <span class="go"><span>约 2 分 48 秒 · 鼠标</span><b>进入 →</b></span>
+    </a>
+
+    <a class="card" href="argon/">
+      <span class="model"><span class="dot" style="background:#2c7f8c"></span>Gemini 4 Argon</span>
+      <h2>潮汐调音师</h2>
+      <p>海底发条灯塔里最后一位调音师。拨动钟摆、牵引纸鹤、弹响巨鲸胸腔里的七根弦，再决定黎明往哪边走。</p>
+      <span class="go"><span>约 2 分 45 秒 · 鼠标</span><b>进入 →</b></span>
+    </a>
+  </div>
+
+  <footer>
+    <p>怎么看：用电脑上的 Chrome 打开，点一下画面开始，记得开声音。不动手它也会自己演完，动手才是你的那一版。</p>
+    <p>怎么做的：四个模型拿到同一份考题、同一档推理强度，各自独立完成，成品没有经过人工修改。每部作品都是一个不依赖任何外部资源的网页文件。</p>
+  </footer>
+</main>
+</body>
+</html>

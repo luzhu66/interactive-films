@@ -1,0 +1,2574 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>《潮汐调音师》— 互动短片 | The Tide Tuner</title>
+<style>
+  :root {
+    --gold: #f3c878;
+    --cyan: #6be2f7;
+    --rose: #ff85a1;
+    --bg-deep: #04070f;
+    --bar-height: 9vh;
+    --ui-opacity: 0.92;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg-deep);
+    font-family: "Songti SC", "STSong", "Noto Serif SC", "Source Han Serif SC", "PingFang SC", "Microsoft YaHei", serif;
+    color: #f4f1ea;
+    cursor: none;
+  }
+
+  #stage-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #03050a;
+  }
+
+  canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  #gl-canvas { z-index: 1; }
+  #art-canvas { z-index: 2; pointer-events: none; }
+  #fx-canvas { z-index: 45; pointer-events: none; }
+
+  /* Cinema Letterbox Bars */
+  .letterbox {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: var(--bar-height);
+    background: #020306;
+    z-index: 10;
+    transition: height 1.8s cubic-bezier(0.22, 1, 0.36, 1), background 1.2s ease;
+    pointer-events: none;
+  }
+  .letterbox.top {
+    top: 0;
+    border-bottom: 1px solid rgba(243, 200, 120, 0.14);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.85);
+  }
+  .letterbox.bottom {
+    bottom: 0;
+    border-top: 1px solid rgba(243, 200, 120, 0.14);
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.85);
+  }
+  body.imax-mode .letterbox {
+    height: 0vh;
+  }
+
+  /* Top HUD */
+  #top-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 9vh;
+    min-height: 54px;
+    padding: 0 36px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 20;
+    pointer-events: none;
+    transition: opacity 0.6s ease;
+  }
+  .hud-left, .hud-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    pointer-events: auto;
+  }
+  .film-badge {
+    font-size: 12px;
+    letter-spacing: 0.28em;
+    color: rgba(243, 200, 120, 0.85);
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .film-badge .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--gold);
+    box-shadow: 0 0 10px var(--gold);
+    animation: pulseDot 2.4s infinite ease-in-out;
+  }
+  @keyframes pulseDot {
+    0%, 100% { transform: scale(0.85); opacity: 0.6; }
+    50% { transform: scale(1.25); opacity: 1; }
+  }
+  .act-indicator {
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    color: rgba(244, 241, 234, 0.72);
+    border-left: 1px solid rgba(244, 241, 234, 0.2);
+    padding-left: 16px;
+  }
+
+  .hud-btn {
+    background: rgba(12, 18, 32, 0.65);
+    border: 1px solid rgba(243, 200, 120, 0.28);
+    color: rgba(244, 241, 234, 0.88);
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    transition: all 0.25s ease;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: inherit;
+  }
+  .hud-btn:hover {
+    background: rgba(243, 200, 120, 0.18);
+    border-color: rgba(243, 200, 120, 0.7);
+    transform: translateY(-1px);
+  }
+  .hud-btn.active-mode {
+    border-color: rgba(107, 226, 247, 0.65);
+    color: var(--cyan);
+  }
+
+  /* Narrative Subtitles & Kinetic Typography */
+  #subtitle-layer {
+    position: absolute;
+    left: 50%;
+    bottom: calc(var(--bar-height) + 26px);
+    transform: translateX(-50%);
+    width: min(86vw, 960px);
+    text-align: center;
+    z-index: 15;
+    pointer-events: none;
+    transition: bottom 1.6s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  body.imax-mode #subtitle-layer {
+    bottom: 84px;
+  }
+  .subtitle-cn {
+    font-size: clamp(18px, 2.25vw, 29px);
+    line-height: 1.55;
+    letter-spacing: 0.14em;
+    color: #fdfbf7;
+    text-shadow: 0 2px 18px rgba(0, 0, 0, 0.92), 0 0 36px rgba(243, 200, 120, 0.28);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.85s ease, transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+    font-weight: 400;
+  }
+  .subtitle-cn.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .subtitle-prompt {
+    margin-top: 10px;
+    font-size: clamp(12px, 1.15vw, 15px);
+    letter-spacing: 0.22em;
+    color: var(--gold);
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
+    opacity: 0;
+    transition: opacity 0.7s ease;
+    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .subtitle-prompt.visible {
+    opacity: 0.88;
+  }
+
+  /* Chapter Title Card Overlay */
+  #chapter-card {
+    position: absolute;
+    top: 22%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    z-index: 14;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 1.1s ease, transform 1.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  #chapter-card.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.02);
+  }
+  .chapter-num {
+    font-size: 12px;
+    letter-spacing: 0.45em;
+    color: var(--gold);
+    margin-bottom: 8px;
+    opacity: 0.85;
+  }
+  .chapter-title {
+    font-size: clamp(26px, 3.6vw, 48px);
+    letter-spacing: 0.28em;
+    color: #fff;
+    font-weight: 300;
+    text-shadow: 0 4px 32px rgba(0, 0, 0, 0.9), 0 0 40px rgba(243, 200, 120, 0.35);
+  }
+  .chapter-line {
+    width: 120px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    margin: 12px auto 0;
+  }
+
+  /* Bottom Timeline Scrubber */
+  #bottom-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 9vh;
+    min-height: 54px;
+    padding: 0 36px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    z-index: 20;
+    pointer-events: auto;
+  }
+  .time-readout {
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    color: rgba(244, 241, 234, 0.65);
+    min-width: 98px;
+  }
+  #timeline-track {
+    position: relative;
+    flex: 1;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+  }
+  .timeline-bg {
+    width: 100%;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.14);
+    border-radius: 3px;
+    position: relative;
+    overflow: visible;
+  }
+  #timeline-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--gold), var(--cyan));
+    border-radius: 3px;
+    position: relative;
+    box-shadow: 0 0 12px rgba(243, 200, 120, 0.6);
+  }
+  #timeline-knob {
+    position: absolute;
+    right: -6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 12px var(--gold);
+    transition: transform 0.15s ease;
+  }
+  #timeline-track:hover #timeline-knob {
+    transform: translateY(-50%) scale(1.45);
+  }
+  .act-marker {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.4);
+    pointer-events: none;
+  }
+  .act-marker-label {
+    position: absolute;
+    top: -18px;
+    transform: translateX(-50%);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: rgba(244, 241, 234, 0.45);
+    white-space: nowrap;
+    pointer-events: none;
+    transition: color 0.25s ease;
+  }
+  #timeline-track:hover .act-marker-label {
+    color: rgba(243, 200, 120, 0.85);
+  }
+
+  /* Resonance Meter */
+  .resonance-pill {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    color: rgba(244, 241, 234, 0.72);
+    white-space: nowrap;
+  }
+  .resonance-bar-wrap {
+    width: 72px;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  #resonance-bar {
+    height: 100%;
+    width: 50%;
+    background: linear-gradient(90deg, var(--gold), var(--cyan));
+    transition: width 0.25s ease;
+  }
+
+  /* Opening Curtain Overlay */
+  #start-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    background: radial-gradient(circle at 50% 44%, rgba(16, 28, 52, 0.72) 0%, rgba(3, 5, 11, 0.96) 78%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    transition: opacity 1.2s cubic-bezier(0.22, 1, 0.36, 1), visibility 1.2s;
+    cursor: pointer;
+  }
+  #start-overlay.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .start-emblem {
+    width: 110px;
+    height: 110px;
+    border-radius: 50%;
+    border: 1px solid rgba(243, 200, 120, 0.42);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    margin-bottom: 28px;
+    box-shadow: 0 0 60px rgba(243, 200, 120, 0.16), inset 0 0 30px rgba(107, 226, 247, 0.12);
+    animation: breatheRing 4s infinite ease-in-out;
+  }
+  .start-emblem::before {
+    content: "";
+    position: absolute;
+    inset: -10px;
+    border-radius: 50%;
+    border: 1px dashed rgba(107, 226, 247, 0.32);
+    animation: spinSlow 24s linear infinite;
+  }
+  @keyframes breatheRing {
+    0%, 100% { transform: scale(0.97); box-shadow: 0 0 40px rgba(243, 200, 120, 0.15); }
+    50% { transform: scale(1.04); box-shadow: 0 0 80px rgba(243, 200, 120, 0.35); }
+  }
+  @keyframes spinSlow {
+    to { transform: rotate(360deg); }
+  }
+  .play-triangle {
+    width: 0;
+    height: 0;
+    border-top: 14px solid transparent;
+    border-bottom: 14px solid transparent;
+    border-left: 24px solid var(--gold);
+    margin-left: 6px;
+    filter: drop-shadow(0 0 12px rgba(243, 200, 120, 0.8));
+  }
+  .main-title {
+    font-size: clamp(34px, 5vw, 64px);
+    font-weight: 300;
+    letter-spacing: 0.34em;
+    margin-left: 0.34em;
+    color: #fff;
+    text-shadow: 0 6px 40px rgba(0, 0, 0, 0.9), 0 0 45px rgba(243, 200, 120, 0.32);
+    margin-bottom: 12px;
+  }
+  .sub-title {
+    font-size: clamp(13px, 1.3vw, 16px);
+    letter-spacing: 0.35em;
+    color: rgba(243, 200, 120, 0.82);
+    margin-bottom: 36px;
+  }
+  .intro-desc {
+    max-width: 580px;
+    font-size: 15px;
+    line-height: 1.9;
+    letter-spacing: 0.1em;
+    color: rgba(244, 241, 234, 0.78);
+    margin-bottom: 42px;
+  }
+  .start-cta {
+    padding: 13px 38px;
+    border-radius: 999px;
+    border: 1px solid rgba(243, 200, 120, 0.65);
+    background: linear-gradient(135deg, rgba(243, 200, 120, 0.2), rgba(107, 226, 247, 0.12));
+    color: #fff;
+    font-size: 14px;
+    letter-spacing: 0.26em;
+    box-shadow: 0 0 35px rgba(243, 200, 120, 0.22);
+    transition: all 0.3s ease;
+  }
+  #start-overlay:hover .start-cta {
+    background: linear-gradient(135deg, rgba(243, 200, 120, 0.36), rgba(107, 226, 247, 0.24));
+    transform: scale(1.04);
+    box-shadow: 0 0 50px rgba(243, 200, 120, 0.42);
+  }
+  .tech-footnotes {
+    position: absolute;
+    bottom: 28px;
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    color: rgba(244, 241, 234, 0.45);
+  }
+
+  /* Ending Summary Card */
+  #ending-modal {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -46%) scale(0.96);
+    width: min(88vw, 620px);
+    background: rgba(7, 12, 24, 0.84);
+    border: 1px solid rgba(243, 200, 120, 0.38);
+    border-radius: 18px;
+    padding: 36px 40px;
+    z-index: 35;
+    backdrop-filter: blur(18px);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.85), 0 0 60px rgba(243, 200, 120, 0.14);
+    text-align: center;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: all 1s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  #ending-modal.visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  .ending-tag {
+    font-size: 11px;
+    letter-spacing: 0.35em;
+    color: var(--gold);
+    margin-bottom: 8px;
+  }
+  .ending-name {
+    font-size: clamp(24px, 3vw, 34px);
+    letter-spacing: 0.22em;
+    color: #fff;
+    margin-bottom: 18px;
+    font-weight: 400;
+  }
+  .ending-poem {
+    font-size: 15px;
+    line-height: 2;
+    letter-spacing: 0.14em;
+    color: rgba(244, 241, 234, 0.9);
+    padding: 18px 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    margin-bottom: 22px;
+    white-space: pre-line;
+  }
+  .ending-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 26px;
+  }
+  .stat-box {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 10px 8px;
+  }
+  .stat-val {
+    font-size: 20px;
+    color: var(--cyan);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+  }
+  .stat-lbl {
+    font-size: 11px;
+    color: rgba(244, 241, 234, 0.58);
+    margin-top: 4px;
+    letter-spacing: 0.1em;
+  }
+  .ending-actions {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+</style>
+</head>
+<body>
+
+<div id="stage-container">
+  <canvas id="gl-canvas"></canvas>
+  <canvas id="art-canvas"></canvas>
+  <canvas id="fx-canvas"></canvas>
+
+  <div class="letterbox top"></div>
+  <div class="letterbox bottom"></div>
+
+  <!-- Top Cinema Bar -->
+  <div id="top-bar">
+    <div class="hud-left">
+      <div class="film-badge">
+        <span class="dot"></span>
+        <span>《潮汐调音师》</span>
+      </div>
+      <div class="act-indicator" id="act-label">序幕 · 静止的深海钟楼</div>
+    </div>
+    <div class="hud-right">
+      <button class="hud-btn" id="auto-btn" title="切换观众动手 / 自动放映">
+        <span id="auto-icon">✦</span>
+        <span id="auto-text">互动共鸣中</span>
+      </button>
+      <button class="hud-btn" id="mute-btn" title="静音 / 开启声音 (M)">
+        <span id="mute-icon">♪</span>
+        <span id="mute-text">声音开启</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Chapter Title Card -->
+  <div id="chapter-card">
+    <div class="chapter-num" id="chap-num">ACT I</div>
+    <div class="chapter-title" id="chap-title">序幕：沉没的星盘</div>
+    <div class="chapter-line"></div>
+  </div>
+
+  <!-- Narrative Subtitles -->
+  <div id="subtitle-layer">
+    <div class="subtitle-cn" id="sub-cn"></div>
+    <div class="subtitle-prompt" id="sub-prompt"></div>
+  </div>
+
+  <!-- Ending Summary Modal -->
+  <div id="ending-modal">
+    <div class="ending-tag" id="end-tag">FINAL RESONANCE · 终章回响</div>
+    <div class="ending-name" id="end-name">结局一：归还星群</div>
+    <div class="ending-poem" id="end-poem"></div>
+    <div class="ending-stats">
+      <div class="stat-box">
+        <div class="stat-val" id="stat-strings">0</div>
+        <div class="stat-lbl">拨动心弦</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="stat-lanterns">0</div>
+        <div class="stat-lbl">拾起记忆灯火</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="stat-tone">琥珀暖调</div>
+        <div class="stat-lbl">灵魂频率</div>
+      </div>
+    </div>
+    <div class="ending-actions">
+      <button class="hud-btn" id="replay-choice-btn">↺ 回到第三幕抉择 (01:48)</button>
+      <button class="hud-btn" id="replay-full-btn">▶ 从头重新放映</button>
+    </div>
+  </div>
+
+  <!-- Bottom Timeline Scrubber -->
+  <div id="bottom-bar">
+    <div class="time-readout" id="time-readout">00:00 / 02:45</div>
+    <div id="timeline-track" title="点击可跳转任意章节">
+      <div class="timeline-bg" id="timeline-bg">
+        <div id="timeline-fill">
+          <div id="timeline-knob"></div>
+        </div>
+      </div>
+    </div>
+    <div class="resonance-pill">
+      <span id="polarity-label">余温 ⇄ 星海</span>
+      <div class="resonance-bar-wrap">
+        <div id="resonance-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Opening Curtain -->
+  <div id="start-overlay">
+    <div class="start-emblem">
+      <div class="play-triangle"></div>
+    </div>
+    <h1 class="main-title">潮汐调音师</h1>
+    <div class="sub-title">THE TIDE TUNER · 一部由你拨动走向的互动短片</div>
+    <p class="intro-desc">
+      在时间的海底，有一座替人间保管遗忘声音的发条灯塔。<br>
+      今夜是最后一次满月。你可以静静观看它自己演完，也可以随时伸手——<br>
+      拨动停摆的钟摆、牵引逆流的灯火、弹奏巨鲸的琴弦，改写黎明的结局。
+    </p>
+    <div class="start-cta">点击任意处 · 开启放映（含实时合成交响配乐）</div>
+    <div class="tech-footnotes">时长 02:45 · WebGL 实时流体光影 + Web Audio 动态交响 · 全程可互动或静观</div>
+  </div>
+</div>
+<script>
+(() => {
+  "use strict";
+
+  // ============================================================================
+  // 1. FILM CONFIGURATION & NARRATIVE SCRIPT (165 SECONDS / 02:45)
+  // ============================================================================
+  const TOTAL_DURATION = 165.0;
+
+  const ACTS = [
+    { id: 0, start: 0,   end: 32,  num: "PROLOGUE · 序幕", title: "沉没的星盘钟楼", label: "序幕 · 沉没的星盘钟楼" },
+    { id: 1, start: 32,  end: 70,  num: "ACT I · 第一幕",   title: "逆流的千纸鹤与海上列车", label: "第一幕 · 逆流的纸鹤与列车" },
+    { id: 2, start: 70,  end: 108, num: "ACT II · 第二幕",  title: "星海巨鲸的共鸣腔", label: "第二幕 · 巨鲸的七根心弦" },
+    { id: 3, start: 108, end: 138, num: "ACT III · 第三幕", title: "分岔的黎明", label: "第三幕 · 抉择：分岔的黎明" },
+    { id: 4, start: 138, end: 165, num: "EPILOGUE · 终幕",  title: "潮汐的回响", label: "终幕 · 属于你的终章回响" }
+  ];
+
+  const SUBTITLES = [
+    // Act 0: 0 - 32s
+    { start: 1.0,  end: 7.5,  cn: "在所有被遗忘的诺言沉入海底之后，时间停在了这座发条钟楼。", prompt: "【移动或按住鼠标】拨动静止的巨型钟摆，唤醒沉睡的齿轮" },
+    { start: 8.2,  end: 15.5, cn: "我是一名潮汐调音师。每一粒悬浮的微尘，都是某个人未曾寄出的声音。", prompt: "【向左牵引】染上旧日琥珀的余温 · 【向右牵引】映出遥远星海的澄澈" },
+    { start: 16.2, end: 23.8, cn: () => state.polarity < 0.45
+        ? "你选择了温暖的琥珀色——原来你也在怀念某个还未走远的人。"
+        : (state.polarity > 0.55 ? "你选择了深邃的星海青——你的目光，正望向连光都未抵达的远方。" : "你在余温与星海之间保持着微妙的平衡，像黎明前最安静的潮水。"),
+      prompt: "【按住鼠标不放】为星盘主发条蓄满能量，释放第一道潮汐" },
+    { start: 24.5, end: 31.2, cn: "听——停摆千年的齿轮开始咬合，海面之上，最后一班潮汐列车即将启程。", prompt: "齿轮已苏醒 · 镜头即将升上海面" },
+
+    // Act 1: 32 - 70s
+    { start: 33.0, end: 40.5, cn: "镜面般的海原上，列车载着无主的记忆驶向月食的尽头。", prompt: "【划过飘散的光鹤】将逆风失散的记忆灯火重新引回列车" },
+    { start: 41.2, end: 49.5, cn: "那些发光的纸鹤，是人们在深夜写下又删去的字句。", prompt: "【点击或拖拽】在海面上激起引力涟漪，点亮每一只经过你的纸鹤" },
+    { start: 50.2, end: 59.0, cn: () => state.lanternsSaved >= 8
+        ? `你已为列车拾回 ${state.lanternsSaved} 盏失落的灯火，车窗里重新亮起了温暖的剪影。`
+        : "海风试图吹散它们的航向，但只要有一双温柔的手，逆流也能成为归途。",
+      prompt: "【按住并划过天际】为你拾起的灯火连成星座轨迹" },
+    { start: 59.8, end: 69.2, cn: "远方的海床裂开一道蔚蓝的光渊——那是古老的守夜者正在浮出水面。", prompt: "深海共鸣即将开启" },
+
+    // Act 2: 70 - 108s
+    { start: 71.0, end: 78.5, cn: "我们驶入了星海巨鲸的胸腔。七根横跨天海的琴弦，替世界维系着潮汐的律动。", prompt: "【像拨动竖琴一样划过七根光弦】亲手弹奏这段交响乐的旋律" },
+    { start: 79.2, end: 88.0, cn: "每一根被你拨响的弦，都会在鲸歌中化作一句不灭的诗行。", prompt: "【自由拨弦或点击】你的每一次触碰，都在实时改写配乐的和声与海浪" },
+    { start: 88.8, end: 97.5, cn: () => state.stringsPlucked >= 12
+        ? `七弦在你的指尖共鸣了 ${state.stringsPlucked} 次，连沉睡的星云都随着你的节拍呼吸。`
+        : "不必急促，哪怕只是轻轻擦过一根琴弦，深海也会用整片星河回应你。",
+      prompt: "【连续拨动多根琴弦】唤醒巨鲸心脏深处的双生满月" },
+    { start: 98.2, end: 107.2, cn: "当最后一个音符升上天顶，黑夜终于走到了分岔的尽头。", prompt: "终局抉择即将降临" },
+
+    // Act 3: 108 - 138s
+    { start: 109.0, end: 117.5, cn: "看啊，黎明在天际分成了两道截然不同的引力。", prompt: "【将光标移向左侧、右侧或正中】决定这座记忆世界的最终归宿" },
+    { start: 118.0, end: 127.5, cn: () => {
+        if (state.choiceTarget === "left") return "你正倾向【归还星群】：解开时间的发条，让所有记忆化作漫天萤火，重回人间。";
+        if (state.choiceTarget === "right") return "你正倾向【锚定此刻】：将今夜凝结成永恒的浮空琥珀岛，让美好永不褪色。";
+        return "你正停留在【双生共鸣】的奇点：连接过去与未来，让星火与琥珀同时盛放。";
+      },
+      prompt: "【停留在你选择的引力核上，或按住蓄力】倒计时结束前随时可以改变心意" },
+    { start: 128.0, end: 137.2, cn: "潮汐已定。屏住呼吸——这就是你为这个世界调校出的黎明。", prompt: "画幅即将展开 · 迎接终章" },
+
+    // Act 4: 138 - 165s
+    { start: 139.0, end: 147.5, cn: () => {
+        if (state.finalEnding === "stars") return "千万盏记忆化作流星雨逆流升空，每一个仰望夜空的人，都在今夜做了一个久违的好梦。";
+        if (state.finalEnding === "crystal") return "海面升起一座永不沉没的琉璃星岛，所有来不及说出口的告别，都有了永恒的栖息地。";
+        return "余温与星海在天际交织成双生极光，过去不再遗憾，未来也不再孤单。";
+      },
+      prompt: "【在终章星海中自由挥洒】你的轨迹将留存在片尾的夜空里" },
+    { start: 148.2, end: 164.5, cn: "谢谢你，今夜的调音师。因为你的触碰，这段原本注定孤独的航程，有了独一无二的回响。", prompt: "可随时点击下方时间轴重温任意章节，或体验另外两种结局" }
+  ];
+
+  // ============================================================================
+  // 2. GLOBAL INTERACTIVE STATE
+  // ============================================================================
+  const state = {
+    started: false,
+    time: 0.0,
+    act: 0,
+    lastAct: -1,
+    width: window.innerWidth,
+    height: window.innerHeight,
+    dpr: Math.min(window.devicePixelRatio || 1, 2),
+
+    // Pointer & Auto-Director
+    pointer: {
+      x: window.innerWidth * 0.5,
+      y: window.innerHeight * 0.5,
+      nx: 0.5,
+      ny: 0.5,
+      vx: 0,
+      vy: 0,
+      speed: 0,
+      down: false,
+      holdTime: 0,
+      lastActiveTime: -999
+    },
+    autoMode: false, // True when user hasn't moved mouse for > 4.5s or toggled manually
+    manualAutoOverride: false,
+
+    // Interactive Narrative Parameters
+    polarity: 0.42,          // 0.0 = Warm Amber (余温), 1.0 = Cyan Starlight (星海)
+    energy: 0.35,            // 0.0 to 1.0 harmonic excitation
+    pendulumAngle: 0.32,
+    pendulumVel: 0.0,
+    gearsSpeed: 0.25,
+    stringsPlucked: 0,
+    lanternsSaved: 0,
+    choiceBalance: 0.0,      // -1.0 (Left: Stars) to +1.0 (Right: Crystal), near 0 = Twin Harmony
+    choiceTarget: "center",  // "left" | "right" | "center"
+    finalEnding: "twin",     // "stars" | "crystal" | "twin"
+    endingModalShown: false,
+
+    // Visual Collections
+    ripples: [],             // {x, y, t, strength, color}
+    particles: [],
+    lanterns: [],
+    strings: [],
+    stars: [],
+    floatingPoems: [],
+    trail: []
+  };
+
+  // ============================================================================
+  // 3. WEB AUDIO REAL-TIME SYMPHONY & FOLEY ENGINE
+  // ============================================================================
+  class SymphonicAudioEngine {
+    constructor() {
+      this.ctx = null;
+      this.muted = false;
+      this.masterGain = null;
+      this.reverbNode = null;
+      this.padOscs = [];
+      this.padGain = null;
+      this.padFilter = null;
+      this.noiseGain = null;
+      this.lastStepIndex = -1;
+      this.lastTickTime = 0;
+
+      // D Lydian / B Minor Pentatonic hybrid frequencies (always consonant & lush)
+      // D3, E3, F#3, A3, B3, C#4, D4, E4, F#4, G#4, A4, B4, C#5, D5, E5, F#5, A5
+      this.scale = [
+        146.83, 164.81, 185.00, 220.00, 246.94,
+        277.18, 293.66, 329.63, 369.99, 415.30, 440.00, 493.88,
+        554.37, 587.33, 659.25, 739.99, 880.00, 987.77, 1174.66
+      ];
+    }
+
+    init() {
+      if (this.ctx) {
+        if (this.ctx.state === "suspended") this.ctx.resume();
+        return;
+      }
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AudioCtx();
+
+      this.masterGain = this.ctx.createGain();
+      this.masterGain.gain.setValueAtTime(0.75, this.ctx.currentTime);
+
+      // Dynamics compressor to keep everything silky and prevent clipping
+      this.compressor = this.ctx.createDynamicsCompressor();
+      this.compressor.threshold.setValueAtTime(-16, this.ctx.currentTime);
+      this.compressor.knee.setValueAtTime(24, this.ctx.currentTime);
+      this.compressor.ratio.setValueAtTime(4, this.ctx.currentTime);
+      this.compressor.attack.setValueAtTime(0.01, this.ctx.currentTime);
+      this.compressor.release.setValueAtTime(0.25, this.ctx.currentTime);
+
+      // Procedural Lush Hall Impulse Response (3.2 seconds stereo shimmer reverb)
+      this.reverbNode = this.ctx.createConvolver();
+      this.reverbNode.buffer = this.createImpulseResponse(3.2, 2.4);
+      this.reverbGain = this.ctx.createGain();
+      this.reverbGain.gain.setValueAtTime(0.48, this.ctx.currentTime);
+
+      this.dryGain = this.ctx.createGain();
+      this.dryGain.gain.setValueAtTime(0.72, this.ctx.currentTime);
+
+      this.dryGain.connect(this.compressor);
+      this.reverbNode.connect(this.reverbGain);
+      this.reverbGain.connect(this.compressor);
+      this.compressor.connect(this.masterGain);
+      this.masterGain.connect(this.ctx.destination);
+
+      this.setupAmbientDroneAndOcean();
+    }
+
+    createImpulseResponse(duration, decay) {
+      const rate = this.ctx.sampleRate;
+      const length = Math.floor(rate * duration);
+      const impulse = this.ctx.createBuffer(2, length, rate);
+      for (let ch = 0; ch < 2; ch++) {
+        const data = impulse.getChannelData(ch);
+        for (let i = 0; i < length; i++) {
+          const env = Math.pow(1 - i / length, decay);
+          // Add subtle early-reflection modulation
+          const mod = 1 + 0.15 * Math.sin(i * 0.002);
+          data[i] = (Math.random() * 2 - 1) * env * mod * 0.5;
+        }
+      }
+      return impulse;
+    }
+
+    setupAmbientDroneAndOcean() {
+      const now = this.ctx.currentTime;
+
+      // Warm Symphonic Pad (3 detuned oscillators through lowpass filter)
+      this.padFilter = this.ctx.createBiquadFilter();
+      this.padFilter.type = "lowpass";
+      this.padFilter.frequency.setValueAtTime(420, now);
+      this.padFilter.Q.setValueAtTime(1.2, now);
+
+      this.padGain = this.ctx.createGain();
+      this.padGain.gain.setValueAtTime(0.001, now);
+      this.padGain.gain.exponentialRampToValueAtTime(0.16, now + 3.0);
+
+      const baseFreqs = [73.42, 110.00, 146.83, 220.00]; // D2, A2, D3, A3
+      baseFreqs.forEach((f, idx) => {
+        const osc = this.ctx.createOscillator();
+        osc.type = idx % 2 === 0 ? "sawtooth" : "triangle";
+        osc.frequency.setValueAtTime(f, now);
+        osc.detune.setValueAtTime((idx - 1.5) * 7, now);
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(idx === 0 ? 0.35 : 0.2, now);
+        osc.connect(g);
+        g.connect(this.padFilter);
+        osc.start(now);
+        this.padOscs.push({ osc, gain: g });
+      });
+
+      this.padFilter.connect(this.padGain);
+      this.padGain.connect(this.dryGain);
+      this.padGain.connect(this.reverbNode);
+
+      // Gentle Ocean Surf Noise Generator
+      const bufferSize = this.ctx.sampleRate * 3;
+      const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const out = noiseBuffer.getChannelData(0);
+      let lastOut = 0.0;
+      for (let i = 0; i < bufferSize; i++) {
+        const white = Math.random() * 2 - 1;
+        out[i] = (lastOut + 0.02 * white) / 1.02; // Brown-ish noise
+        lastOut = out[i];
+        out[i] *= 1.8;
+      }
+      const whiteNoise = this.ctx.createBufferSource();
+      whiteNoise.buffer = noiseBuffer;
+      whiteNoise.loop = true;
+
+      this.oceanFilter = this.ctx.createBiquadFilter();
+      this.oceanFilter.type = "bandpass";
+      this.oceanFilter.frequency.setValueAtTime(280, now);
+      this.oceanFilter.Q.setValueAtTime(0.7, now);
+
+      this.noiseGain = this.ctx.createGain();
+      this.noiseGain.gain.setValueAtTime(0.035, now);
+
+      whiteNoise.connect(this.oceanFilter);
+      this.oceanFilter.connect(this.noiseGain);
+      this.noiseGain.connect(this.reverbNode);
+      whiteNoise.start(now);
+    }
+
+    toggleMute() {
+      if (!this.ctx) this.init();
+      this.muted = !this.muted;
+      if (this.masterGain && this.ctx) {
+        this.masterGain.gain.setTargetAtTime(this.muted ? 0.0001 : 0.75, this.ctx.currentTime, 0.08);
+      }
+      return this.muted;
+    }
+
+    // Play a warm felt-piano / harp note
+    playNote(scaleIndex, velocity = 0.25, duration = 2.4, timbre = "harp", panVal = 0) {
+      if (!this.ctx || this.muted) return;
+      const now = this.ctx.currentTime;
+      const idx = Math.max(0, Math.min(this.scale.length - 1, Math.round(scaleIndex)));
+      const freq = this.scale[idx];
+
+      const osc1 = this.ctx.createOscillator();
+      const osc2 = this.ctx.createOscillator();
+      osc1.type = timbre === "harp" ? "triangle" : "sine";
+      osc2.type = timbre === "harp" ? "sine" : "sawtooth";
+      osc1.frequency.setValueAtTime(freq, now);
+      osc2.frequency.setValueAtTime(freq * (timbre === "bell" ? 2.0 : 1.002), now);
+
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(freq * (timbre === "harp" ? 6.5 : 3.5), now);
+      filter.frequency.exponentialRampToValueAtTime( Math.max(180, freq * 1.1), now + duration * 0.85);
+
+      const env = this.ctx.createGain();
+      const peak = Math.min(0.42, velocity * 0.35);
+      env.gain.setValueAtTime(0.0001, now);
+      env.gain.linearRampToValueAtTime(peak, now + (timbre === "piano" ? 0.018 : 0.008));
+      env.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+      let panner = null;
+      if (this.ctx.createStereoPanner) {
+        panner = this.ctx.createStereoPanner();
+        panner.pan.setValueAtTime(Math.max(-0.85, Math.min(0.85, panVal)), now);
+      }
+
+      osc1.connect(filter);
+      osc2.connect(filter);
+      filter.connect(env);
+      if (panner) {
+        env.connect(panner);
+        panner.connect(this.dryGain);
+        panner.connect(this.reverbNode);
+      } else {
+        env.connect(this.dryGain);
+        env.connect(this.reverbNode);
+      }
+
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + duration + 0.05);
+      osc2.stop(now + duration + 0.05);
+    }
+
+    // Clockwork escapement tick for Prologue
+    playClockTick(pitchMultiplier = 1.0, vol = 0.12) {
+      if (!this.ctx || this.muted) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(1150 * pitchMultiplier, now);
+      osc.frequency.exponentialRampToValueAtTime(220, now + 0.035);
+
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(vol, now);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
+
+      osc.connect(g);
+      g.connect(this.dryGain);
+      g.connect(this.reverbNode);
+      osc.start(now);
+      osc.stop(now + 0.045);
+    }
+
+    // Cinematic sub-bass swell for chapter transitions
+    playTransitionBoom(actId) {
+      if (!this.ctx || this.muted) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      osc.type = "sine";
+      const rootFreq = [73.42, 82.41, 92.50, 73.42, 110.00][actId % 5];
+      osc.frequency.setValueAtTime(rootFreq * 1.5, now);
+      osc.frequency.exponentialRampToValueAtTime(rootFreq * 0.75, now + 2.6);
+
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.001, now);
+      g.gain.linearRampToValueAtTime(0.32, now + 0.25);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 2.8);
+
+      osc.connect(g);
+      g.connect(this.dryGain);
+      g.connect(this.reverbNode);
+      osc.start(now);
+      osc.stop(now + 2.9);
+
+      // Shimmer chord arpeggio
+      const chord = [5, 7, 9, 11, 14];
+      chord.forEach((n, i) => {
+        setTimeout(() => {
+          this.playNote(n + (actId % 3), 0.35, 3.2, "bell", (i - 2) * 0.3);
+        }, i * 95);
+      });
+    }
+
+    // Continuous update driven by film timeline & user interaction
+    update(dt) {
+      if (!this.ctx || this.muted) return;
+      const now = this.ctx.currentTime;
+
+      // Modulate Pad Filter & Chords based on Act, Polarity & Pointer speed
+      const cutoff = 280 + state.polarity * 520 + state.energy * 680 + (state.act === 4 ? 450 : 0);
+      if (this.padFilter) {
+        this.padFilter.frequency.setTargetAtTime(cutoff, now, 0.15);
+      }
+
+      // Chord roots per Act:
+      // Act 0: Dmaj9 | Act 1: Bm11 | Act 2: Gmaj7#11 | Act 3: Asus4/F#m | Act 4: Dmaj9 (Lydian)
+      const chordSets = [
+        [73.42, 110.00, 146.83, 220.00], // D
+        [61.74, 92.50, 123.47, 185.00],  // B
+        [98.00, 146.83, 185.00, 246.94], // G
+        [82.41, 123.47, 164.81, 220.00], // E / A
+        [73.42, 110.00, 185.00, 293.66]  // D Lydian Grand
+      ];
+      const targetChord = chordSets[state.act] || chordSets[0];
+      this.padOscs.forEach((item, i) => {
+        item.osc.frequency.setTargetAtTime(targetChord[i], now, 0.8);
+      });
+
+      // Ocean wave modulation
+      if (this.oceanFilter) {
+        const waveCycle = 240 + Math.sin(state.time * 0.55) * 140 + state.pointer.speed * 6;
+        this.oceanFilter.frequency.setTargetAtTime(Math.min(900, waveCycle), now, 0.2);
+      }
+
+      // Algorithmic Generative Score Sequencer (120 BPM eighth-note grid = 0.25s per step)
+      const stepDur = state.act === 2 ? 0.22 : (state.act === 3 ? 0.20 : 0.27);
+      const stepIndex = Math.floor(state.time / stepDur);
+      if (stepIndex !== this.lastStepIndex) {
+        this.lastStepIndex = stepIndex;
+
+        // Clockwork tick in Prologue
+        if (state.act === 0 && stepIndex % 2 === 0) {
+          this.playClockTick(stepIndex % 4 === 0 ? 1.15 : 0.88, 0.08 + state.energy * 0.06);
+        }
+
+        // Melodic generative motif based on Act + User Polarity
+        const patternWarm = [6, 8, 10, 13, 11, 10, 8, 6];
+        const patternCyan = [13, 14, 11, 16, 14, 12, 10, 11];
+        const pat = state.polarity < 0.5 ? patternWarm : patternCyan;
+        const noteIdx = pat[stepIndex % pat.length];
+
+        // Play main motif notes on rhythmic pulses
+        if (stepIndex % 2 === 0 || (state.act >= 2 && stepIndex % 3 === 0)) {
+          const vel = 0.22 + state.energy * 0.25 + (stepIndex % 4 === 0 ? 0.12 : 0);
+          const pan = Math.sin(stepIndex * 0.7) * 0.55;
+          const timbre = state.act === 2 ? "harp" : (state.act === 4 ? "bell" : "piano");
+          this.playNote(noteIdx, vel, 2.2, timbre, pan);
+        }
+
+        // Counter-melody bass note on bar boundaries
+        if (stepIndex % 8 === 0) {
+          const bassNote = [0, 3, 2, 1, 0][state.act];
+          this.playNote(bassNote, 0.36, 3.8, "piano", 0);
+        }
+
+        // Climax / Epilogue shimmering arpeggio
+        if (state.act >= 3 && stepIndex % 2 === 1) {
+          const highNote = 11 + ((stepIndex * 3) % 7);
+          this.playNote(highNote, 0.16 + state.energy * 0.15, 1.8, "bell", (state.pointer.nx - 0.5) * 1.4);
+        }
+      }
+    }
+  }
+
+  const audio = new SymphonicAudioEngine();
+
+  // ============================================================================
+  // 4. WEBGL VOLUMETRIC NEBULA, MIRROR OCEAN & RIPPLE SHADER ENGINE
+  // ============================================================================
+  class GLBackdrop {
+    constructor(canvas) {
+      this.canvas = canvas;
+      this.gl = canvas.getContext("webgl", { antialias: false, alpha: false, preserveDrawingBuffer: false });
+      this.ready = false;
+      this.uniforms = {};
+      if (this.gl) {
+        this.initShaders();
+      }
+    }
+
+    initShaders() {
+      const gl = this.gl;
+      const vsSource = `
+        attribute vec2 a_pos;
+        varying vec2 v_uv;
+        void main() {
+          v_uv = a_pos * 0.5 + 0.5;
+          gl_Position = vec4(a_pos, 0.0, 1.0);
+        }
+      `;
+
+      const fsSource = `
+        precision highp float;
+        varying vec2 v_uv;
+        uniform vec2 u_res;
+        uniform float u_time;
+        uniform float u_act;
+        uniform float u_polarity;
+        uniform float u_energy;
+        uniform vec2 u_pointer;
+        uniform float u_choice;
+        uniform float u_ending;
+        uniform vec4 u_ripples[6];
+
+        float hash(vec2 p) {
+          p = fract(p * vec2(123.34, 456.21));
+          p += dot(p, p + 45.32);
+          return fract(p.x * p.y);
+        }
+
+        float noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = hash(i);
+          float b = hash(i + vec2(1.0, 0.0));
+          float c = hash(i + vec2(0.0, 1.0));
+          float d = hash(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
+        float fbm(vec2 p) {
+          float v = 0.0;
+          float amp = 0.5;
+          mat2 rot = mat2(0.8, -0.6, 0.6, 0.8);
+          for (int i = 0; i < 5; i++) {
+            v += amp * noise(p);
+            p = rot * p * 2.03 + vec2(0.12 * u_time, -0.08 * u_time);
+            amp *= 0.5;
+          }
+          return v;
+        }
+
+        void main() {
+          vec2 uv = v_uv;
+          float aspect = u_res.x / max(1.0, u_res.y);
+          vec2 p = (uv - 0.5) * vec2(aspect, 1.0);
+          vec2 ptr = (u_pointer - 0.5) * vec2(aspect, 1.0);
+
+          // Interactive shockwave distortion from ripples
+          vec2 rippleOffset = vec2(0.0);
+          float rippleGlow = 0.0;
+          for (int i = 0; i < 6; i++) {
+            vec4 rp = u_ripples[i];
+            if (rp.z > 0.0) {
+              vec2 rPos = (rp.xy - 0.5) * vec2(aspect, 1.0);
+              vec2 diff = p - rPos;
+              float dist = length(diff);
+              float age = u_time - rp.z;
+              if (age > 0.0 && age < 4.5) {
+                float radius = age * 0.42;
+                float band = exp(-pow((dist - radius) * 18.0, 2.0)) * exp(-age * 0.85) * rp.w;
+                rippleOffset += normalize(diff + 0.0001) * band * 0.035;
+                rippleGlow += band * 0.9;
+              }
+            }
+          }
+
+          vec2 wp = p + rippleOffset;
+
+          // Base palette driven by user's Polarity (Warm Amber vs Starlight Cyan)
+          vec3 warmDeep = vec3(0.05, 0.03, 0.07);
+          vec3 cyanDeep = vec3(0.015, 0.045, 0.10);
+          vec3 bgCol = mix(warmDeep, cyanDeep, u_polarity);
+
+          vec3 accentWarm = vec3(0.96, 0.76, 0.42);
+          vec3 accentCyan = vec3(0.38, 0.88, 0.98);
+          vec3 accentRose = vec3(0.95, 0.48, 0.65);
+          vec3 primaryGlow = mix(accentWarm, accentCyan, u_polarity);
+
+          // Horizon & Mirror Sea coordinate
+          float horizonY = -0.14 + 0.04 * sin(u_time * 0.25);
+          bool isSea = (u_act >= 0.8) && (wp.y < horizonY);
+
+          vec2 samplePos = wp;
+          float seaWave = 0.0;
+          if (isSea) {
+            float depth = max(0.002, horizonY - wp.y);
+            seaWave = sin(wp.x * 24.0 / depth + u_time * 3.5) * 0.008 * depth
+                    + cos(wp.x * 12.0 - u_time * 2.1) * 0.005;
+            samplePos.y = 2.0 * horizonY - wp.y + seaWave;
+            samplePos.x += seaWave * 2.5;
+          }
+
+          // Volumetric FBM Nebula & God Rays
+          float n1 = fbm(samplePos * 1.8 + vec2(0.0, u_time * 0.04));
+          float n2 = fbm(samplePos * 3.4 - vec2(u_time * 0.06, 0.0) + n1 * 0.65);
+          float nebula = smoothstep(0.22, 0.88, n1 * 0.6 + n2 * 0.55);
+
+          vec3 col = bgCol;
+          col += primaryGlow * nebula * (0.28 + 0.25 * u_energy);
+          col += mix(accentRose, accentCyan, n2) * pow(n2, 2.2) * 0.26;
+
+          // Act 0: Submerged Cathedral Caustics & God Rays from Top
+          if (u_act < 0.9) {
+            float ray = sin(wp.x * 9.0 + sin(wp.y * 3.0 + u_time * 0.7)) * 0.5 + 0.5;
+            float godRay = pow(ray, 4.0) * smoothstep(-0.5, 0.6, wp.y);
+            col += primaryGlow * godRay * 0.24;
+          }
+
+          // Moon / Bifurcating Suns in Sky (reflected in sea)
+          if (u_act >= 0.8 && u_act < 3.2) {
+            vec2 moonCenter = vec2(0.0, 0.16);
+            float dMoon = length(samplePos - moonCenter);
+            float moonDisc = smoothstep(0.145, 0.135, dMoon);
+            float moonHalo = exp(-dMoon * 5.2) * 0.65;
+            col += mix(vec3(1.0, 0.93, 0.82), primaryGlow, 0.35) * (moonDisc * 0.9 + moonHalo);
+          }
+
+          // Act 3: Bifurcating Dawn (Three Attractors)
+          if (u_act >= 2.8) {
+            vec2 leftSun = vec2(-0.46, 0.12);
+            vec2 rightSun = vec2(0.46, 0.12);
+            vec2 centerSun = vec2(0.0, 0.18);
+            float dL = length(samplePos - leftSun);
+            float dR = length(samplePos - rightSun);
+            float dC = length(samplePos - centerSun);
+
+            col += accentWarm * exp(-dL * 5.0) * (0.55 - 0.25 * u_choice);
+            col += accentCyan * exp(-dR * 5.0) * (0.55 + 0.25 * u_choice);
+            col += accentRose * exp(-dC * 5.5) * (0.45 + 0.25 * (1.0 - abs(u_choice)));
+          }
+
+          // Act 4: IMAX Finale Aurora & Dawn Burst
+          if (u_act >= 3.8) {
+            float aurora = sin(samplePos.x * 4.5 + n1 * 4.0 + u_time * 0.8) * 0.5 + 0.5;
+            float band = exp(-pow((samplePos.y - 0.15 - 0.12 * sin(samplePos.x * 2.5 + u_time * 0.4)) * 4.5, 2.0));
+            vec3 endCol = u_ending < 0.5 ? accentWarm : (u_ending > 1.5 ? accentRose : accentCyan);
+            col += mix(primaryGlow, endCol, aurora) * band * 0.62;
+          }
+
+          // Mirror Sea Attenuation & Horizon Glow
+          if (isSea) {
+            float fresnel = exp(-(horizonY - wp.y) * 6.5);
+            col *= 0.68 + 0.28 * fresnel;
+            float caustic = pow(noise(vec2(wp.x * 18.0, (horizonY - wp.y) * 45.0 - u_time * 2.5)), 3.0);
+            col += primaryGlow * caustic * 0.28;
+          }
+          if (u_act >= 0.8) {
+            float hLine = exp(-abs(wp.y - horizonY) * 38.0);
+            col += mix(primaryGlow, vec3(1.0), 0.5) * hLine * 0.45;
+          }
+
+          // Pointer Aura & Ripple Shimmer
+          float dPtr = length(p - ptr);
+          col += primaryGlow * exp(-dPtr * 6.5) * (0.25 + 0.25 * u_energy);
+          col += mix(primaryGlow, vec3(1.0), 0.5) * rippleGlow * 0.65;
+
+          // Subtle Cinema Vignette & Tone Mapping
+          float vig = smoothstep(1.35, 0.25, length(p * vec2(0.75, 1.05)));
+          col *= (0.45 + 0.55 * vig);
+          col = col / (1.0 + col * 0.35);
+          col = pow(max(col, vec3(0.0)), vec3(0.92));
+
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `;
+
+      const compile = (type, src) => {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, src);
+        gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+          console.warn("Shader error:", gl.getShaderInfoLog(s));
+          return null;
+        }
+        return s;
+      };
+
+      const vs = compile(gl.VERTEX_SHADER, vsSource);
+      const fs = compile(gl.FRAGMENT_SHADER, fsSource);
+      if (!vs || !fs) return;
+
+      const prog = gl.createProgram();
+      gl.attachShader(prog, vs);
+      gl.attachShader(prog, fs);
+      gl.linkProgram(prog);
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return;
+
+      gl.useProgram(prog);
+      this.program = prog;
+
+      const buf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+
+      const aPos = gl.getAttribLocation(prog, "a_pos");
+      gl.enableVertexAttribArray(aPos);
+      gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+      ["u_res", "u_time", "u_act", "u_polarity", "u_energy", "u_pointer", "u_choice", "u_ending"].forEach(name => {
+        this.uniforms[name] = gl.getUniformLocation(prog, name);
+      });
+      this.rippleLocs = [];
+      for (let i = 0; i < 6; i++) {
+        this.rippleLocs.push(gl.getUniformLocation(prog, `u_ripples[${i}]`));
+      }
+      this.ready = true;
+    }
+
+    resize(w, h, dpr) {
+      this.canvas.width = Math.floor(w * Math.min(dpr, 1.5));
+      this.canvas.height = Math.floor(h * Math.min(dpr, 1.5));
+      if (this.gl) {
+        this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+      }
+    }
+
+    render() {
+      if (!this.ready) return;
+      const gl = this.gl;
+      gl.useProgram(this.program);
+      gl.uniform2f(this.uniforms.u_res, this.canvas.width, this.canvas.height);
+      gl.uniform1f(this.uniforms.u_time, state.time);
+      gl.uniform1f(this.uniforms.u_act, state.act);
+      gl.uniform1f(this.uniforms.u_polarity, state.polarity);
+      gl.uniform1f(this.uniforms.u_energy, state.energy);
+      gl.uniform2f(this.uniforms.u_pointer, state.pointer.nx, 1.0 - state.pointer.ny);
+      gl.uniform1f(this.uniforms.u_choice, state.choiceBalance);
+      const endCode = state.finalEnding === "stars" ? 0.0 : (state.finalEnding === "crystal" ? 1.0 : 2.0);
+      gl.uniform1f(this.uniforms.u_ending, endCode);
+
+      for (let i = 0; i < 6; i++) {
+        const r = state.ripples[i];
+        if (r) {
+          gl.uniform4f(this.rippleLocs[i], r.nx, 1.0 - r.ny, r.t, r.strength);
+        } else {
+          gl.uniform4f(this.rippleLocs[i], 0, 0, -10, 0);
+        }
+      }
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+  }
+
+  // ============================================================================
+  // 5. SCENE ENTITIES INITIALIZATION (STARS, LANTERNS, HARP STRINGS, POEMS)
+  // ============================================================================
+  const POETIC_WORDS = [
+    "未寄出的信", "一九九九的夏夜", "海风记得你", "请别忘记我",
+    "第四次日落", "月光下的站台", "迟到的拥抱", "星河入梦",
+    "旧日鲸歌", "灯塔守夜人", "再见亦是重逢", "琥珀里的光"
+  ];
+
+  const WHALE_VERSES = [
+    "第一弦 · 唤醒沉睡千年的海潮",
+    "第二弦 · 替漂泊的旅人照亮归途",
+    "第三弦 · 让散落的诺言重新成诗",
+    "第四弦 · 抚平所有未曾说出口的遗憾",
+    "第五弦 · 连接两颗遥远星辰的引力",
+    "第六弦 · 在夜最深处燃起琥珀色的火",
+    "第七弦 · 万物共鸣，黎明因你而降临"
+  ];
+
+  function initEntities() {
+    // Background & foreground ambient stars / motes
+    state.stars = [];
+    for (let i = 0; i < 140; i++) {
+      state.stars.push({
+        x: Math.random(),
+        y: Math.random(),
+        size: 0.7 + Math.random() * 2.2,
+        phase: Math.random() * Math.PI * 2,
+        speed: 0.15 + Math.random() * 0.55,
+        warm: Math.random() > 0.5
+      });
+    }
+
+    // Act 1 Drifting Paper Cranes / Memory Lanterns
+    state.lanterns = [];
+    for (let i = 0; i < 24; i++) {
+      state.lanterns.push(createLantern(i));
+    }
+
+    // Act 2 Seven Celestial Harp Strings inside the Astral Whale
+    state.strings = [];
+    for (let i = 0; i < 7; i++) {
+      state.strings.push({
+        index: i,
+        nx: 0.20 + (i / 6) * 0.60,
+        disp: 0,
+        vel: 0,
+        glow: 0,
+        lastPluck: -10,
+        noteIdx: 6 + i * 2,
+        verse: WHALE_VERSES[i]
+      });
+    }
+  }
+
+  function createLantern(idx) {
+    return {
+      id: idx,
+      nx: 0.12 + Math.random() * 0.82,
+      ny: 0.18 + Math.random() * 0.42,
+      vx: -0.025 - Math.random() * 0.03,
+      vy: (Math.random() - 0.5) * 0.015,
+      saved: false,
+      saveProgress: 0,
+      word: POETIC_WORDS[idx % POETIC_WORDS.length],
+      phase: Math.random() * Math.PI * 2,
+      scale: 0.75 + Math.random() * 0.55
+    };
+  }
+
+  function spawnRipple(nx, ny, strength = 1.0) {
+    state.ripples.unshift({ nx, ny, t: state.time, strength });
+    if (state.ripples.length > 6) state.ripples.pop();
+  }
+
+  function spawnParticles(x, y, count = 14, warmBias = null) {
+    for (let i = 0; i < count; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 40 + Math.random() * 190;
+      const isWarm = warmBias !== null ? warmBias : (Math.random() > state.polarity);
+      state.particles.push({
+        x,
+        y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 25,
+        life: 1.0,
+        decay: 0.55 + Math.random() * 0.65,
+        size: 1.8 + Math.random() * 3.5,
+        color: isWarm ? "#f3c878" : "#6be2f7"
+      });
+    }
+  }
+
+  // ============================================================================
+  // 6. 2D CINEMA ART LAYER & PROCEDURAL ANIMATION RENDERER
+  // ============================================================================
+  const glCanvas = document.getElementById("gl-canvas");
+  const artCanvas = document.getElementById("art-canvas");
+  const fxCanvas = document.getElementById("fx-canvas");
+  const artCtx = artCanvas.getContext("2d");
+  const fxCtx = fxCanvas.getContext("2d");
+  const glBackdrop = new GLBackdrop(glCanvas);
+
+  function resizeAll() {
+    state.width = window.innerWidth;
+    state.height = window.innerHeight;
+    state.dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    artCanvas.width = Math.floor(state.width * state.dpr);
+    artCanvas.height = Math.floor(state.height * state.dpr);
+    artCtx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+
+    fxCanvas.width = Math.floor(state.width * state.dpr);
+    fxCanvas.height = Math.floor(state.height * state.dpr);
+    fxCtx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+
+    glBackdrop.resize(state.width, state.height, state.dpr);
+  }
+
+  // Helper to draw an intricate mechanical clockwork gear
+  function drawGear(ctx, x, y, radius, teeth, angle, color, alpha = 0.45) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = 1.6;
+
+    ctx.beginPath();
+    const step = (Math.PI * 2) / teeth;
+    for (let i = 0; i < teeth; i++) {
+      const a0 = i * step;
+      const a1 = a0 + step * 0.25;
+      const a2 = a0 + step * 0.5;
+      const a3 = a0 + step * 0.75;
+      ctx.lineTo(Math.cos(a0) * radius, Math.sin(a0) * radius);
+      ctx.lineTo(Math.cos(a1) * (radius + 8), Math.sin(a1) * (radius + 8));
+      ctx.lineTo(Math.cos(a2) * (radius + 8), Math.sin(a2) * (radius + 8));
+      ctx.lineTo(Math.cos(a3) * radius, Math.sin(a3) * radius);
+    }
+    ctx.closePath();
+    ctx.stroke();
+
+    // Inner rings & spokes
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * 0.72, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * 0.24, 0, Math.PI * 2);
+    ctx.stroke();
+
+    for (let i = 0; i < 6; i++) {
+      const a = (i * Math.PI) / 3;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * radius * 0.24, Math.sin(a) * radius * 0.24);
+      ctx.lineTo(Math.cos(a) * radius * 0.72, Math.sin(a) * radius * 0.72);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ACT 0: The Submerged Clockwork Observatory & Interactive Pendulum
+  function renderAct0(ctx, w, h, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const cx = w * 0.5;
+    const cy = h * 0.46;
+    const minDim = Math.min(w, h);
+    const primaryCol = state.polarity < 0.5 ? "#f3c878" : "#6be2f7";
+    const secondaryCol = state.polarity < 0.5 ? "#6be2f7" : "#f3c878";
+
+    // Astrolabe outer celestial rings
+    drawGear(ctx, cx, cy, minDim * 0.34, 36, state.time * 0.08 * state.gearsSpeed, primaryCol, 0.32 * alpha);
+    drawGear(ctx, cx, cy, minDim * 0.24, 24, -state.time * 0.14 * state.gearsSpeed, secondaryCol, 0.38 * alpha);
+    drawGear(ctx, cx - minDim * 0.28, cy + minDim * 0.12, minDim * 0.13, 16, state.time * 0.22 * state.gearsSpeed, primaryCol, 0.22 * alpha);
+    drawGear(ctx, cx + minDim * 0.28, cy - minDim * 0.10, minDim * 0.15, 18, -state.time * 0.19 * state.gearsSpeed, secondaryCol, 0.22 * alpha);
+
+    // Roman / Astral Hour Marks around the main astrolabe
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(state.time * 0.03);
+    for (let i = 0; i < 12; i++) {
+      const ang = (i * Math.PI) / 6;
+      const r1 = minDim * 0.28;
+      const r2 = minDim * 0.31;
+      ctx.strokeStyle = "rgba(243, 200, 120, 0.45)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(ang) * r1, Math.sin(ang) * r1);
+      ctx.lineTo(Math.cos(ang) * r2, Math.sin(ang) * r2);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Giant Interactive Pendulum hanging from top
+    const pivotX = cx;
+    const pivotY = h * 0.06;
+    const rodLen = h * 0.54;
+    const bobX = pivotX + Math.sin(state.pendulumAngle) * rodLen;
+    const bobY = pivotY + Math.cos(state.pendulumAngle) * rodLen;
+
+    // Pendulum wake arc
+    ctx.strokeStyle = "rgba(243, 200, 120, 0.18)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 8]);
+    ctx.beginPath();
+    ctx.arc(pivotX, pivotY, rodLen, Math.PI * 0.5 - 0.55, Math.PI * 0.5 + 0.55);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Rod
+    const rodGrad = ctx.createLinearGradient(pivotX, pivotY, bobX, bobY);
+    rodGrad.addColorStop(0, "rgba(243, 200, 120, 0.15)");
+    rodGrad.addColorStop(1, primaryCol);
+    ctx.strokeStyle = rodGrad;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(pivotX, pivotY);
+    ctx.lineTo(bobX, bobY);
+    ctx.stroke();
+
+    // Glowing Bob & Astrolabe Core
+    const bobGlow = ctx.createRadialGradient(bobX, bobY, 4, bobX, bobY, 68);
+    bobGlow.addColorStop(0, "#ffffff");
+    bobGlow.addColorStop(0.3, primaryCol);
+    bobGlow.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = bobGlow;
+    ctx.beginPath();
+    ctx.arc(bobX, bobY, 68, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(bobX, bobY, 18 + state.energy * 6, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Connection tether when pointer interacts with the pendulum
+    const distToBob = Math.hypot(state.pointer.x - bobX, state.pointer.y - bobY);
+    if (distToBob < 260 || state.pointer.down) {
+      ctx.strokeStyle = state.pointer.down ? "#ffffff" : primaryCol;
+      ctx.lineWidth = state.pointer.down ? 2.2 : 1.1;
+      ctx.globalAlpha = alpha * Math.max(0.2, 1 - distToBob / 280);
+      ctx.beginPath();
+      ctx.moveTo(bobX, bobY);
+      ctx.quadraticCurveTo(cx, (bobY + state.pointer.y) * 0.5, state.pointer.x, state.pointer.y);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // Helper to draw an origami paper crane / lantern
+  function drawPaperCrane(ctx, x, y, size, phase, isSaved, color) {
+    ctx.save();
+    ctx.translate(x, y);
+    const wingFlap = Math.sin(phase) * 0.35;
+    ctx.scale(1, 1 - Math.abs(wingFlap) * 0.18);
+
+    // Outer Halo
+    const glow = ctx.createRadialGradient(0, 0, 1, 0, 0, size * 2.4);
+    glow.addColorStop(0, isSaved ? "#ffffff" : color);
+    glow.addColorStop(0.4, isSaved ? "rgba(107, 226, 247, 0.55)" : "rgba(243, 200, 120, 0.38)");
+    glow.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 0, size * 2.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Origami wings & body
+    ctx.fillStyle = isSaved ? "#e8fbff" : "#fff5de";
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.2;
+
+    // Body triangle
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.9, 0);
+    ctx.lineTo(size * 0.9, -size * 0.15);
+    ctx.lineTo(0, size * 0.35);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Wing
+    ctx.beginPath();
+    ctx.moveTo(-size * 0.3, 0);
+    ctx.lineTo(size * 0.15, -size * (0.95 + wingFlap));
+    ctx.lineTo(size * 0.45, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // ACT 1: The Sky-Train Over the Mirror Sea & Drifting Origami Cranes
+  function renderAct1(ctx, w, h, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const horizonY = h * (0.64 - 0.04 * Math.sin(state.time * 0.25));
+    const trainProgress = ((state.time - 28) * 0.032) % 1.35 - 0.18;
+    const trainX = w * trainProgress;
+    const carriageW = 118;
+    const carriageH = 34;
+    const numCars = 5;
+
+    // Draw Mirror Sea Train & Its Reflection
+    for (let pass = 0; pass < 2; pass++) {
+      const isReflection = pass === 1;
+      ctx.save();
+      if (isReflection) {
+        ctx.translate(0, horizonY * 2);
+        ctx.scale(1, -0.65);
+        ctx.globalAlpha = alpha * 0.32;
+      }
+
+      for (let c = 0; c < numCars; c++) {
+        const cx = trainX - c * (carriageW + 12);
+        const cy = horizonY - carriageH - 4;
+
+        // Carriage silhouette
+        ctx.fillStyle = "#080d1a";
+        ctx.strokeStyle = "rgba(243, 200, 120, 0.55)";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.roundRect(cx, cy, carriageW, carriageH, [8, 8, 2, 2]);
+        ctx.fill();
+        ctx.stroke();
+
+        // Warm lit windows inside each carriage
+        const winCount = 5;
+        for (let wIdx = 0; wIdx < winCount; wIdx++) {
+          const wx = cx + 12 + wIdx * 19;
+          const wy = cy + 8;
+          const lit = (c * winCount + wIdx) <= state.lanternsSaved + 6;
+          ctx.fillStyle = lit ? "#ffdf9a" : "rgba(107, 226, 247, 0.25)";
+          ctx.shadowColor = lit ? "#f3c878" : "transparent";
+          ctx.shadowBlur = lit ? 12 : 0;
+          ctx.fillRect(wx, wy, 12, 13);
+        }
+        ctx.shadowBlur = 0;
+      }
+
+      // Locomotive Headlight Beam cutting across the night
+      const headX = trainX + carriageW;
+      const headY = horizonY - carriageH * 0.55;
+      const beamGrad = ctx.createLinearGradient(headX, headY, headX + 380, headY - 60);
+      beamGrad.addColorStop(0, "rgba(255, 240, 195, 0.55)");
+      beamGrad.addColorStop(1, "rgba(255, 240, 195, 0)");
+      ctx.fillStyle = beamGrad;
+      ctx.beginPath();
+      ctx.moveTo(headX, headY);
+      ctx.lineTo(headX + 380, headY - 95);
+      ctx.lineTo(headX + 380, headY + 45);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    // Update & Draw Drifting Memory Cranes / Lanterns
+    const locoTargetX = Math.max(w * 0.2, Math.min(w * 0.85, trainX + carriageW * 0.5));
+    const locoTargetY = horizonY - carriageH - 18;
+
+    // Draw constellation lines between saved cranes
+    ctx.strokeStyle = "rgba(107, 226, 247, 0.28)";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    let startedLine = false;
+    state.lanterns.forEach(l => {
+      if (l.saved) {
+        const lx = l.nx * w;
+        const ly = l.ny * h;
+        if (!startedLine) {
+          ctx.moveTo(lx, ly);
+          startedLine = true;
+        } else {
+          ctx.lineTo(lx, ly);
+        }
+      }
+    });
+    ctx.stroke();
+
+    state.lanterns.forEach(l => {
+      l.phase += 0.08;
+      if (!l.saved) {
+        l.nx += l.vx * 0.008;
+        l.ny += l.vy * 0.008 + Math.sin(state.time * 1.5 + l.id) * 0.0005;
+        if (l.nx < 0.04) l.nx = 0.96;
+        if (l.ny < 0.14) l.ny = 0.14;
+        if (l.ny > 0.56) l.ny = 0.56;
+
+        // Check interaction with pointer
+        const lx = l.nx * w;
+        const ly = l.ny * h;
+        const dist = Math.hypot(state.pointer.x - lx, state.pointer.y - ly);
+        if (dist < 115) {
+          l.saved = true;
+          state.lanternsSaved++;
+          state.energy = Math.min(1.0, state.energy + 0.08);
+          audio.playNote(8 + (l.id % 8), 0.32, 2.2, "harp", (l.nx - 0.5) * 1.4);
+          spawnRipple(l.nx, l.ny, 0.85);
+          spawnParticles(lx, ly, 16, l.id % 2 === 0);
+        }
+      } else {
+        // Gently orbit in a luminous ribbon above the train
+        const targetNx = (locoTargetX / w) - 0.04 * (l.id % 7) + Math.sin(state.time * 0.9 + l.id) * 0.05;
+        const targetNy = (locoTargetY / h) - 0.06 - (l.id % 5) * 0.045 + Math.cos(state.time * 1.1 + l.id) * 0.025;
+        l.nx += (targetNx - l.nx) * 0.035;
+        l.ny += (targetNy - l.ny) * 0.035;
+      }
+
+      const x = l.nx * w;
+      const y = l.ny * h;
+      const col = l.saved ? "#6be2f7" : "#f3c878";
+      drawPaperCrane(ctx, x, y, 13 * l.scale, l.phase, l.saved, col);
+
+      // Show poetic memory fragment label near saved or hovered cranes
+      const dPtr = Math.hypot(state.pointer.x - x, state.pointer.y - y);
+      if (l.saved || dPtr < 160) {
+        ctx.fillStyle = l.saved ? "rgba(230, 250, 255, 0.88)" : "rgba(243, 200, 120, 0.82)";
+        ctx.font = "12px 'Songti SC', serif";
+        ctx.textAlign = "center";
+        ctx.fillText(l.word, x, y - 20);
+      }
+    });
+
+    ctx.restore();
+  }
+
+  // ACT 2: The Astral Whale & Seven Interactive Harmonic Strings
+  function renderAct2(ctx, w, h, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // 1. Render the Colossal Bioluminescent Astral Whale swimming across the chamber
+    const whaleX = w * (0.5 + 0.18 * Math.sin(state.time * 0.28));
+    const whaleY = h * (0.46 + 0.05 * Math.cos(state.time * 0.42));
+    const whaleLen = Math.min(w, h) * 0.48;
+
+    ctx.save();
+    ctx.translate(whaleX, whaleY);
+    ctx.rotate(Math.sin(state.time * 0.28) * 0.08);
+
+    // Whale luminous aura
+    const whaleGlow = ctx.createRadialGradient(0, 0, 10, 0, 0, whaleLen);
+    whaleGlow.addColorStop(0, "rgba(107, 226, 247, 0.26)");
+    whaleGlow.addColorStop(0.5, "rgba(243, 200, 120, 0.12)");
+    whaleGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = whaleGlow;
+    ctx.beginPath();
+    ctx.arc(0, 0, whaleLen, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Whale Spine & Celestial Ribcage
+    ctx.strokeStyle = "rgba(180, 240, 255, 0.65)";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    for (let i = -12; i <= 12; i++) {
+      const t = i / 12;
+      const sx = t * whaleLen * 0.85;
+      const sy = Math.sin(t * 3.2 - state.time * 2.2) * 18 * (1 - t * 0.4);
+      if (i === -12) ctx.moveTo(sx, sy);
+      else ctx.lineTo(sx, sy);
+    }
+    ctx.stroke();
+
+    // Rib arcs along the whale's body
+    for (let i = -8; i <= 7; i++) {
+      const t = i / 10;
+      const sx = t * whaleLen * 0.72;
+      const sy = Math.sin(t * 3.2 - state.time * 2.2) * 18;
+      const ribH = (1 - t * t) * whaleLen * 0.26;
+      ctx.strokeStyle = i % 2 === 0 ? "rgba(107, 226, 247, 0.42)" : "rgba(243, 200, 120, 0.38)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, Math.max(4, ribH * 0.35), Math.max(4, ribH), 0.15, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 2. Render & Update the 7 Celestial Harp Strings
+    const topY = h * 0.11;
+    const botY = h * 0.85;
+    const prevX = state.pointer.x - state.pointer.vx;
+
+    state.strings.forEach((s, idx) => {
+      const baseX = s.nx * w;
+
+      // Detect pointer crossing or clicking near string
+      const crossed = (prevX < baseX && state.pointer.x >= baseX) || (prevX > baseX && state.pointer.x <= baseX);
+      const near = Math.abs(state.pointer.x - baseX) < 26 && state.pointer.y > topY && state.pointer.y < botY;
+      if ((crossed || (near && state.pointer.down)) && (state.time - s.lastPluck > 0.16)) {
+        s.lastPluck = state.time;
+        const dir = state.pointer.vx >= 0 ? 1 : -1;
+        s.vel += dir * Math.min(68, Math.max(24, state.pointer.speed * 1.6));
+        s.glow = 1.0;
+        state.stringsPlucked++;
+        state.energy = Math.min(1.0, state.energy + 0.1);
+
+        // Play lush harp chord for this string
+        audio.playNote(s.noteIdx, 0.42, 3.0, "harp", (s.nx - 0.5) * 1.5);
+        audio.playNote(s.noteIdx + 4, 0.24, 3.4, "bell", (s.nx - 0.5) * 1.2);
+        spawnRipple(s.nx, state.pointer.ny, 1.1);
+        spawnParticles(baseX, state.pointer.y, 20, idx % 2 === 0);
+
+        // Spawn floating verse
+        state.floatingPoems.push({
+          text: s.verse,
+          x: baseX,
+          y: Math.max(h * 0.24, Math.min(h * 0.68, state.pointer.y)),
+          life: 1.0
+        });
+      }
+
+      // Spring-damper physics
+      const k = 0.22;
+      const damp = 0.91;
+      s.vel += -k * s.disp;
+      s.vel *= damp;
+      s.disp += s.vel;
+      s.glow *= 0.95;
+
+      const midX = baseX + s.disp;
+      const midY = state.pointer.y > topY && state.pointer.y < botY ? state.pointer.y : h * 0.5;
+
+      // Outer String Glow
+      if (s.glow > 0.05) {
+        ctx.strokeStyle = idx % 2 === 0 ? "rgba(243, 200, 120, 0.6)" : "rgba(107, 226, 247, 0.6)";
+        ctx.lineWidth = 4 + s.glow * 10;
+        ctx.beginPath();
+        ctx.moveTo(baseX, topY);
+        ctx.quadraticCurveTo(midX, midY, baseX, botY);
+        ctx.stroke();
+      }
+
+      // Core String
+      ctx.strokeStyle = s.glow > 0.2 ? "#ffffff" : (idx % 2 === 0 ? "rgba(243, 200, 120, 0.78)" : "rgba(107, 226, 247, 0.78)");
+      ctx.lineWidth = 1.6 + s.glow * 2.2;
+      ctx.beginPath();
+      ctx.moveTo(baseX, topY);
+      ctx.quadraticCurveTo(midX, midY, baseX, botY);
+      ctx.stroke();
+
+      // Anchor nodes & string labels
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(baseX, topY, 3.5, 0, Math.PI * 2);
+      ctx.arc(baseX, botY, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(244, 241, 234, 0.62)";
+      ctx.font = "11px 'PingFang SC', sans-serif";
+      ctx.textAlign = "center";
+      const noteNames = ["宫 · D", "商 · E", "角 · F#", "清角 · G#", "徵 · A", "羽 · B", "变宫 · C#"];
+      ctx.fillText(noteNames[idx], baseX, topY - 12);
+    });
+
+    // Render floating poetic verses triggered by plucking strings
+    for (let i = state.floatingPoems.length - 1; i >= 0; i--) {
+      const fp = state.floatingPoems[i];
+      fp.y -= 0.7;
+      fp.life -= 0.008;
+      if (fp.life <= 0) {
+        state.floatingPoems.splice(i, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.globalAlpha = alpha * Math.min(1, fp.life * 1.5);
+      ctx.fillStyle = "#fff8e8";
+      ctx.shadowColor = "#f3c878";
+      ctx.shadowBlur = 14;
+      ctx.font = "15px 'Songti SC', serif";
+      ctx.textAlign = "center";
+      ctx.fillText(fp.text, fp.x, fp.y);
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  // ACT 3: The Bifurcating Dawn (Three Interactive Ending Attractors)
+  function renderAct3(ctx, w, h, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    const nodes = [
+      { id: "left",   x: w * 0.23, y: h * 0.44, title: "归还星群", sub: "解开发条 · 化作漫天萤火重回人间", col: "#f3c878" },
+      { id: "center", x: w * 0.50, y: h * 0.36, title: "双生共鸣", sub: "调和余温与星海 · 开启隐藏双生极光", col: "#ff85a1" },
+      { id: "right",  x: w * 0.77, y: h * 0.44, title: "锚定此刻", sub: "凝结时间 · 升起永不沉没的琉璃星岛", col: "#6be2f7" }
+    ];
+
+    // Determine which attractor the pointer is closest to
+    let minD = 99999;
+    let activeNode = nodes[1];
+    nodes.forEach(n => {
+      const d = Math.hypot(state.pointer.x - n.x, state.pointer.y - n.y);
+      if (d < minD) {
+        minD = d;
+        activeNode = n;
+      }
+    });
+    state.choiceTarget = activeNode.id;
+
+    const targetBalance = activeNode.id === "left" ? -1.0 : (activeNode.id === "right" ? 1.0 : 0.0);
+    state.choiceBalance += (targetBalance - state.choiceBalance) * 0.04;
+
+    // Lock in final ending as Act 3 nears completion
+    if (state.time < 137.5) {
+      state.finalEnding = activeNode.id === "left" ? "stars" : (activeNode.id === "right" ? "crystal" : "twin");
+    }
+
+    // Draw gravitational energy stream from pointer to active attractor
+    ctx.strokeStyle = activeNode.col;
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(state.pointer.x, state.pointer.y);
+    ctx.quadraticCurveTo(w * 0.5, h * 0.5, activeNode.x, activeNode.y);
+    ctx.stroke();
+
+    // Draw the 3 Attractor Portals
+    nodes.forEach(n => {
+      const isSelected = n.id === state.choiceTarget;
+      const pulse = 1 + 0.08 * Math.sin(state.time * 3.2 + (n.id === "left" ? 0 : 2));
+      const r = (isSelected ? 64 : 44) * pulse;
+
+      // Portal Halo
+      const g = ctx.createRadialGradient(n.x, n.y, 4, n.x, n.y, r * 2.1);
+      g.addColorStop(0, "#ffffff");
+      g.addColorStop(0.35, n.col);
+      g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r * 2.1, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Rotating Astrolabe Ring around Portal
+      drawGear(ctx, n.x, n.y, r * 1.15, 16, state.time * (isSelected ? 0.6 : 0.2), n.col, isSelected ? 0.85 : 0.35);
+
+      // Portal Title & Subtitle
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `${isSelected ? "22px" : "17px"} 'Songti SC', serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(`【${n.title}】`, n.x, n.y + r + 34);
+
+      ctx.fillStyle = isSelected ? n.col : "rgba(244, 241, 234, 0.55)";
+      ctx.font = "12px 'PingFang SC', sans-serif";
+      ctx.fillText(n.sub, n.x, n.y + r + 56);
+    });
+
+    // Countdown progress arc at top center of Act 3
+    const remainRatio = Math.max(0, Math.min(1, (138 - state.time) / 30));
+    ctx.strokeStyle = "rgba(243, 200, 120, 0.6)";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(w * 0.5, h * 0.16, 22, -Math.PI * 0.5, -Math.PI * 0.5 + Math.PI * 2 * remainRatio);
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(244, 241, 234, 0.8)";
+    ctx.font = "11px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(`${Math.ceil(Math.max(0, 138 - state.time))}s`, w * 0.5, h * 0.16 + 4);
+
+    ctx.restore();
+  }
+
+  // ACT 4: Epilogue IMAX Spectacle (Tailored to the 3 Endings)
+  function renderAct4(ctx, w, h, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const cx = w * 0.5;
+    const cy = h * 0.46;
+
+    if (state.finalEnding === "stars") {
+      // Ending 1: Ascending Starfall & Origami Flock returning to the sky
+      for (let i = 0; i < 45; i++) {
+        const seed = i * 37.13;
+        const x = ((seed * 19.7 + state.time * (18 + (i % 7) * 5)) % w);
+        const y = h - ((seed * 43.1 + state.time * (45 + (i % 9) * 12)) % h);
+        ctx.fillStyle = i % 2 === 0 ? "#f3c878" : "#6be2f7";
+        ctx.beginPath();
+        ctx.arc(x, y, 2.2 + (i % 3), 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "rgba(243, 200, 120, 0.35)";
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - 6, y + 28);
+        ctx.stroke();
+      }
+    } else if (state.finalEnding === "crystal") {
+      // Ending 2: Immortal Floating Crystal Sanctuary Island
+      const floatY = cy + Math.sin(state.time * 0.8) * 12;
+      drawGear(ctx, cx, floatY, Math.min(w, h) * 0.28, 28, state.time * 0.12, "#6be2f7", 0.55);
+      drawGear(ctx, cx, floatY, Math.min(w, h) * 0.19, 20, -state.time * 0.18, "#f3c878", 0.65);
+
+      // Crystalline Sanctuary Spires
+      ctx.strokeStyle = "#e2fbff";
+      ctx.fillStyle = "rgba(107, 226, 247, 0.22)";
+      ctx.lineWidth = 2;
+      const spires = [-90, -45, 0, 45, 90];
+      spires.forEach((ox, idx) => {
+        const sh = 110 - Math.abs(ox) * 0.65;
+        ctx.beginPath();
+        ctx.moveTo(cx + ox - 18, floatY + 20);
+        ctx.lineTo(cx + ox, floatY - sh);
+        ctx.lineTo(cx + ox + 18, floatY + 20);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      });
+    } else {
+      // Ending 3: Twin Resonance (Dual Spirals + Astral Rings)
+      drawGear(ctx, cx, cy, Math.min(w, h) * 0.31, 32, state.time * 0.15, "#ff85a1", 0.48);
+      for (let arm = 0; arm < 2; arm++) {
+        ctx.strokeStyle = arm === 0 ? "#f3c878" : "#6be2f7";
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        for (let t = 0; t < 60; t++) {
+          const r = t * 4.8;
+          const ang = t * 0.22 - state.time * 1.4 + arm * Math.PI;
+          const x = cx + Math.cos(ang) * r;
+          const y = cy + Math.sin(ang) * r * 0.65;
+          if (t === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  // ============================================================================
+  // 7. AUTO-DIRECTOR (HANDS-OFF AUTONOMOUS PLAYBACK) & PHYSICS UPDATE
+  // ============================================================================
+  function updateDirectorAndPhysics(dt) {
+    const w = state.width;
+    const h = state.height;
+
+    // Determine Current Act
+    let currentAct = 0;
+    for (let i = 0; i < ACTS.length; i++) {
+      if (state.time >= ACTS[i].start) currentAct = i;
+    }
+    state.act = currentAct;
+
+    if (state.act !== state.lastAct) {
+      state.lastAct = state.act;
+      onActChange(state.act);
+    }
+
+    // Check if Hands-Off Auto-Director should drive the pointer smoothly
+    const idleTime = state.time - state.pointer.lastActiveTime;
+    state.autoMode = state.manualAutoOverride || (idleTime > 4.2);
+    updateAutoBadge();
+
+    if (state.autoMode) {
+      // Autonomous graceful cursor choreography per Act
+      let tx = w * 0.5;
+      let ty = h * 0.5;
+      if (state.act === 0) {
+        tx = w * (0.5 + 0.26 * Math.sin(state.time * 0.95));
+        ty = h * (0.48 + 0.12 * Math.cos(state.time * 0.7));
+      } else if (state.act === 1) {
+        // Chase drifting lanterns smoothly
+        const unsaved = state.lanterns.find(l => !l.saved);
+        if (unsaved) {
+          tx = unsaved.nx * w;
+          ty = unsaved.ny * h;
+        } else {
+          tx = w * (0.5 + 0.32 * Math.sin(state.time * 0.6));
+          ty = h * (0.36 + 0.1 * Math.sin(state.time * 1.1));
+        }
+      } else if (state.act === 2) {
+        // Sweep across the 7 harp strings rhythmically
+        tx = w * (0.5 + 0.34 * Math.sin(state.time * 1.15));
+        ty = h * (0.46 + 0.16 * Math.cos(state.time * 0.8));
+      } else if (state.act === 3) {
+        // Visit the 3 attractors then settle on the one matching user's history
+        const preferred = state.stringsPlucked > 10 && state.lanternsSaved > 6 ? 0.5 : (state.polarity < 0.48 ? 0.23 : 0.77);
+        tx = w * (preferred + 0.08 * Math.sin(state.time * 0.8));
+        ty = h * 0.42;
+      } else {
+        tx = w * (0.5 + 0.3 * Math.cos(state.time * 0.5));
+        ty = h * (0.45 + 0.2 * Math.sin(state.time * 0.7));
+      }
+
+      const prevX = state.pointer.x;
+      const prevY = state.pointer.y;
+      state.pointer.x += (tx - state.pointer.x) * 0.045;
+      state.pointer.y += (ty - state.pointer.y) * 0.045;
+      state.pointer.vx = state.pointer.x - prevX;
+      state.pointer.vy = state.pointer.y - prevY;
+      state.pointer.speed = Math.hypot(state.pointer.vx, state.pointer.vy);
+      state.pointer.nx = state.pointer.x / Math.max(1, w);
+      state.pointer.ny = state.pointer.y / Math.max(1, h);
+    } else {
+      state.pointer.vx *= 0.85;
+      state.pointer.vy *= 0.85;
+      state.pointer.speed *= 0.85;
+    }
+
+    // Update Polarity (Warm Amber vs Starlight Cyan) & Energy
+    if (!state.autoMode || state.act === 0) {
+      const targetPol = state.pointer.nx;
+      state.polarity += (targetPol - state.polarity) * (state.pointer.down ? 0.04 : 0.012);
+      state.polarity = Math.max(0.02, Math.min(0.98, state.polarity));
+    }
+
+    if (state.pointer.down) {
+      state.pointer.holdTime += dt;
+      state.energy = Math.min(1.0, state.energy + dt * 0.45);
+      if (Math.random() < 0.28) {
+        spawnParticles(state.pointer.x, state.pointer.y, 2, state.polarity < 0.5);
+      }
+    } else {
+      state.pointer.holdTime = 0;
+      state.energy = Math.max(0.22, state.energy - dt * 0.14 + state.pointer.speed * 0.002);
+    }
+
+    // Act 0 Pendulum Physics
+    const gravity = -1.8 * Math.sin(state.pendulumAngle);
+    const pointerTorque = (state.pointer.nx - 0.5) * (state.pointer.down ? 1.35 : 0.45);
+    state.pendulumVel += (gravity + pointerTorque) * dt;
+    state.pendulumVel *= 0.992;
+    state.pendulumAngle += state.pendulumVel * dt * 2.6;
+    state.gearsSpeed = 0.25 + Math.abs(state.pendulumVel) * 1.8 + state.energy * 1.4;
+
+    // Update Pointer Trail
+    state.trail.unshift({ x: state.pointer.x, y: state.pointer.y, life: 1.0 });
+    if (state.trail.length > 28) state.trail.pop();
+    state.trail.forEach(t => { t.life *= 0.92; });
+
+    // Update Sparks / Particles
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+      const p = state.particles[i];
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy -= 18 * dt; // Gentle buoyancy
+      p.life -= p.decay * dt;
+      if (p.life <= 0) state.particles.splice(i, 1);
+    }
+
+    // Trigger Ending Summary Card at 150s
+    if (state.time >= 150.0 && !state.endingModalShown) {
+      state.endingModalShown = true;
+      showEndingModal();
+    } else if (state.time < 145.0 && state.endingModalShown) {
+      state.endingModalShown = false;
+      document.getElementById("ending-modal").classList.remove("visible");
+    }
+  }
+
+  // ============================================================================
+  // 8. UI, SUBTITLES, CHAPTER CARDS & ENDING MODAL
+  // ============================================================================
+  const actLabelEl = document.getElementById("act-label");
+  const chapCardEl = document.getElementById("chapter-card");
+  const chapNumEl = document.getElementById("chap-num");
+  const chapTitleEl = document.getElementById("chap-title");
+  const subCnEl = document.getElementById("sub-cn");
+  const subPromptEl = document.getElementById("sub-prompt");
+  const timeReadoutEl = document.getElementById("time-readout");
+  const timelineFillEl = document.getElementById("timeline-fill");
+  const resonanceBarEl = document.getElementById("resonance-bar");
+  const autoBtnEl = document.getElementById("auto-btn");
+  const autoTextEl = document.getElementById("auto-text");
+
+  let lastSubtitleRef = null;
+  let chapTimer = null;
+
+  function onActChange(actIdx) {
+    const info = ACTS[actIdx];
+    if (!info) return;
+    actLabelEl.textContent = info.label;
+    chapNumEl.textContent = info.num;
+    chapTitleEl.textContent = info.title;
+    chapCardEl.classList.add("show");
+    if (chapTimer) clearTimeout(chapTimer);
+    chapTimer = setTimeout(() => chapCardEl.classList.remove("show"), 4200);
+
+    // Expand Letterbox to Full-Screen IMAX in Act 4
+    if (actIdx === 4) {
+      document.body.classList.add("imax-mode");
+    } else {
+      document.body.classList.remove("imax-mode");
+    }
+
+    audio.playTransitionBoom(actIdx);
+    spawnRipple(0.5, 0.5, 1.4);
+  }
+
+  function updateHUD() {
+    // Format mm:ss
+    const fmt = s => {
+      const m = Math.floor(s / 60);
+      const sec = Math.floor(s % 60);
+      return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+    };
+    timeReadoutEl.textContent = `${fmt(state.time)} / ${fmt(TOTAL_DURATION)}`;
+    const pct = Math.min(100, (state.time / TOTAL_DURATION) * 100);
+    timelineFillEl.style.width = `${pct}%`;
+    resonanceBarEl.style.width = `${Math.round(state.polarity * 100)}%`;
+
+    // Find active subtitle
+    const activeSub = SUBTITLES.find(s => state.time >= s.start && state.time <= s.end);
+    if (activeSub) {
+      const text = typeof activeSub.cn === "function" ? activeSub.cn() : activeSub.cn;
+      if (subCnEl.textContent !== text) {
+        subCnEl.textContent = text;
+      }
+      subPromptEl.textContent = activeSub.prompt || "";
+      subCnEl.classList.add("visible");
+      subPromptEl.classList.add("visible");
+      lastSubtitleRef = activeSub;
+    } else if (lastSubtitleRef) {
+      subCnEl.classList.remove("visible");
+      subPromptEl.classList.remove("visible");
+      lastSubtitleRef = null;
+    }
+  }
+
+  function updateAutoBadge() {
+    if (state.autoMode) {
+      autoTextEl.textContent = "自动导演放映中（动一下鼠标即可接管）";
+      autoBtnEl.classList.remove("active-mode");
+    } else {
+      autoTextEl.textContent = "由你亲自调律中";
+      autoBtnEl.classList.add("active-mode");
+    }
+  }
+
+  function showEndingModal() {
+    const modal = document.getElementById("ending-modal");
+    const nameEl = document.getElementById("end-name");
+    const poemEl = document.getElementById("end-poem");
+    const sStrings = document.getElementById("stat-strings");
+    const sLanterns = document.getElementById("stat-lanterns");
+    const sTone = document.getElementById("stat-tone");
+
+    if (state.finalEnding === "stars") {
+      nameEl.textContent = "结局一 · 归还星群";
+      poemEl.textContent =
+        "你松开了紧握千年的发条，\n" +
+        "让每一只停泊的纸鹤化作逆流而上的星火。\n" +
+        "从此不必再守望沉没的旧梦，\n" +
+        "因为你曾爱过的声音，已照亮整个人间的夜空。";
+    } else if (state.finalEnding === "crystal") {
+      nameEl.textContent = "结局二 · 锚定此刻";
+      poemEl.textContent =
+        "你在汹涌的潮汐中央筑起了一座琉璃星岛，\n" +
+        "将所有来不及说出口的珍重凝结成永恒的琥珀。\n" +
+        "纵使外面的世界依然匆忙流转，\n" +
+        "总有一盏不灭的灯火，替你留在最初的海上。";
+    } else {
+      nameEl.textContent = "隐藏结局 · 双生共鸣";
+      poemEl.textContent =
+        "你在旧日余温与遥远星海之间找到了奇迹的平衡，\n" +
+        "深海的巨鲸与海上的列车在同一道极光里相遇。\n" +
+        "过去化作底座，未来生出羽翼，\n" +
+        "这是唯独属于你——首席潮汐调音师的完美终章。";
+    }
+
+    sStrings.textContent = `${state.stringsPlucked} 次`;
+    sLanterns.textContent = `${state.lanternsSaved} 盏`;
+    sTone.textContent = state.polarity < 0.42 ? "琥珀暖调" : (state.polarity > 0.58 ? "星海澄青" : "双生谐振");
+    modal.classList.add("visible");
+  }
+
+  // ============================================================================
+  // 9. MAIN RENDER LOOP (60 FPS HYBRID WEBGL + 2D ART + FX CURSOR)
+  // ============================================================================
+  let lastFrameTime = performance.now();
+
+  function renderFrame(now) {
+    requestAnimationFrame(renderFrame);
+    const dt = Math.min(0.05, (now - lastFrameTime) * 0.001);
+    lastFrameTime = now;
+
+    if (state.started) {
+      state.time = Math.min(TOTAL_DURATION, state.time + dt);
+      updateDirectorAndPhysics(dt);
+      audio.update(dt);
+      updateHUD();
+    } else {
+      // Gentle living preview animation behind start curtain
+      state.time = (now * 0.0006) % 12.0;
+      state.pendulumAngle = Math.sin(now * 0.0012) * 0.28;
+    }
+
+    // 1. Render WebGL Volumetric Backdrop
+    glBackdrop.render();
+
+    // 2. Render 2D Cinema Art Layer with smooth cross-fades between Acts
+    const w = state.width;
+    const h = state.height;
+    artCtx.clearRect(0, 0, w, h);
+
+    // Ambient background stars & floating memory motes
+    state.stars.forEach(st => {
+      st.y -= st.speed * 0.0005;
+      if (st.y < 0) st.y = 1.0;
+      const sx = st.x * w + Math.sin(state.time * 0.5 + st.phase) * 12;
+      const sy = st.y * h;
+      const twinkle = 0.35 + 0.65 * Math.sin(state.time * 2.2 + st.phase);
+      artCtx.fillStyle = st.warm ? `rgba(243, 200, 120, ${twinkle * 0.65})` : `rgba(107, 226, 247, ${twinkle * 0.65})`;
+      artCtx.beginPath();
+      artCtx.arc(sx, sy, st.size, 0, Math.PI * 2);
+      artCtx.fill();
+    });
+
+    // Cross-fade alpha helper for each Act
+    const actAlpha = (start, end) => {
+      const fade = 2.5;
+      if (state.time < start - fade || state.time > end + fade) return 0;
+      if (state.time < start + fade) return Math.max(0, Math.min(1, (state.time - (start - fade)) / (fade * 2)));
+      if (state.time > end - fade) return Math.max(0, Math.min(1, ((end + fade) - state.time) / (fade * 2)));
+      return 1;
+    };
+
+    const a0 = state.started ? actAlpha(-5, 32) : 0.75;
+    const a1 = actAlpha(32, 70);
+    const a2 = actAlpha(70, 108);
+    const a3 = actAlpha(108, 138);
+    const a4 = actAlpha(138, 170);
+
+    if (a0 > 0.01) renderAct0(artCtx, w, h, a0);
+    if (a1 > 0.01) renderAct1(artCtx, w, h, a1);
+    if (a2 > 0.01) renderAct2(artCtx, w, h, a2);
+    if (a3 > 0.01) renderAct3(artCtx, w, h, a3);
+    if (a4 > 0.01) renderAct4(artCtx, w, h, a4);
+
+    // 3. Render Foreground FX Layer (Particles + Custom Harmonic Cursor)
+    fxCtx.clearRect(0, 0, w, h);
+
+    // Render Particles
+    state.particles.forEach(p => {
+      fxCtx.save();
+      fxCtx.globalAlpha = Math.max(0, p.life);
+      fxCtx.fillStyle = p.color;
+      fxCtx.shadowColor = p.color;
+      fxCtx.shadowBlur = 10;
+      fxCtx.beginPath();
+      fxCtx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      fxCtx.fill();
+      fxCtx.restore();
+    });
+
+    // Render Luminous Cursor Trail & Astrolabe Reticle
+    if (state.trail.length > 1) {
+      fxCtx.beginPath();
+      for (let i = 0; i < state.trail.length; i++) {
+        const pt = state.trail[i];
+        if (i === 0) fxCtx.moveTo(pt.x, pt.y);
+        else fxCtx.lineTo(pt.x, pt.y);
+      }
+      fxCtx.strokeStyle = state.polarity < 0.5 ? "rgba(243, 200, 120, 0.42)" : "rgba(107, 226, 247, 0.42)";
+      fxCtx.lineWidth = state.pointer.down ? 3.5 : 1.8;
+      fxCtx.stroke();
+    }
+
+    const px = state.pointer.x;
+    const py = state.pointer.y;
+    const cursorCol = state.polarity < 0.5 ? "#f3c878" : "#6be2f7";
+
+    fxCtx.save();
+    fxCtx.translate(px, py);
+    fxCtx.strokeStyle = cursorCol;
+    fxCtx.lineWidth = 1.4;
+    const ringR = state.pointer.down ? 22 : 14;
+    fxCtx.beginPath();
+    fxCtx.arc(0, 0, ringR, 0, Math.PI * 2);
+    fxCtx.stroke();
+
+    fxCtx.fillStyle = "#ffffff";
+    fxCtx.beginPath();
+    fxCtx.arc(0, 0, 3.2, 0, Math.PI * 2);
+    fxCtx.fill();
+    fxCtx.restore();
+  }
+
+  // ============================================================================
+  // 10. USER INTERACTION & TIMELINE CONTROLS
+  // ============================================================================
+  function buildTimelineMarkers() {
+    const bg = document.getElementById("timeline-bg");
+    ACTS.forEach(a => {
+      if (a.start === 0) return;
+      const pct = (a.start / TOTAL_DURATION) * 100;
+      const dot = document.createElement("div");
+      dot.className = "act-marker";
+      dot.style.left = `${pct}%`;
+      const lbl = document.createElement("div");
+      lbl.className = "act-marker-label";
+      lbl.style.left = `${pct}%`;
+      lbl.textContent = a.title;
+      bg.appendChild(dot);
+      bg.appendChild(lbl);
+    });
+  }
+
+  function handlePointerMove(clientX, clientY) {
+    const prevX = state.pointer.x;
+    const prevY = state.pointer.y;
+    state.pointer.x = clientX;
+    state.pointer.y = clientY;
+    state.pointer.vx = clientX - prevX;
+    state.pointer.vy = clientY - prevY;
+    state.pointer.speed = Math.hypot(state.pointer.vx, state.pointer.vy);
+    state.pointer.nx = clientX / Math.max(1, state.width);
+    state.pointer.ny = clientY / Math.max(1, state.height);
+    state.pointer.lastActiveTime = state.time;
+    state.manualAutoOverride = false;
+
+    if (state.started && state.pointer.speed > 26 && Math.random() < 0.25) {
+      spawnRipple(state.pointer.nx, state.pointer.ny, 0.55);
+    }
+  }
+
+  function triggerInteractionPulse(clientX, clientY) {
+    handlePointerMove(clientX, clientY);
+    state.pointer.down = true;
+    if (!state.started) return;
+
+    spawnRipple(state.pointer.nx, state.pointer.ny, 1.15);
+    spawnParticles(clientX, clientY, 18, state.polarity < 0.5);
+
+    // Musical chord response to click anywhere on screen
+    const yNote = Math.floor((1.0 - state.pointer.ny) * 12) + 4;
+    const timbre = state.act === 2 ? "harp" : "bell";
+    audio.playNote(yNote, 0.35, 2.4, timbre, (state.pointer.nx - 0.5) * 1.4);
+  }
+
+  window.addEventListener("mousemove", e => handlePointerMove(e.clientX, e.clientY));
+  window.addEventListener("mousedown", e => triggerInteractionPulse(e.clientX, e.clientY));
+  window.addEventListener("mouseup", () => { state.pointer.down = false; });
+
+  window.addEventListener("touchstart", e => {
+    if (e.touches.length > 0) {
+      triggerInteractionPulse(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }, { passive: true });
+  window.addEventListener("touchmove", e => {
+    if (e.touches.length > 0) {
+      handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  }, { passive: true });
+  window.addEventListener("touchend", () => { state.pointer.down = false; });
+
+  // Start Curtain Click
+  document.getElementById("start-overlay").addEventListener("click", e => {
+    audio.init();
+    state.time = 0.0;
+    state.lastAct = 0;
+    state.started = true;
+    state.pointer.lastActiveTime = 0;
+    state.ripples = [];
+    document.getElementById("start-overlay").classList.add("hidden");
+    onActChange(0);
+    spawnRipple(e.clientX / Math.max(1, state.width), e.clientY / Math.max(1, state.height), 1.35);
+    spawnParticles(e.clientX, e.clientY, 24, true);
+  });
+
+  // Mute Button & 'M' Key
+  const muteBtn = document.getElementById("mute-btn");
+  const muteText = document.getElementById("mute-text");
+  const muteIcon = document.getElementById("mute-icon");
+  function toggleMuteUI() {
+    const isMuted = audio.toggleMute();
+    muteText.textContent = isMuted ? "已静音" : "声音开启";
+    muteIcon.textContent = isMuted ? "✕" : "♪";
+  }
+  muteBtn.addEventListener("click", e => {
+    e.stopPropagation();
+    toggleMuteUI();
+  });
+
+  // Auto-Director Toggle Button
+  autoBtnEl.addEventListener("click", e => {
+    e.stopPropagation();
+    state.manualAutoOverride = !state.autoMode;
+    if (!state.manualAutoOverride) {
+      state.pointer.lastActiveTime = state.time;
+    }
+    updateAutoBadge();
+  });
+
+  // Timeline Scrubber Jump
+  document.getElementById("timeline-track").addEventListener("click", e => {
+    e.stopPropagation();
+    if (!state.started) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    state.time = ratio * TOTAL_DURATION;
+    state.endingModalShown = false;
+    document.getElementById("ending-modal").classList.remove("visible");
+  });
+
+  // Ending Card Replay Buttons
+  document.getElementById("replay-choice-btn").addEventListener("click", e => {
+    e.stopPropagation();
+    state.time = 108.2;
+    state.endingModalShown = false;
+    document.getElementById("ending-modal").classList.remove("visible");
+  });
+
+  document.getElementById("replay-full-btn").addEventListener("click", e => {
+    e.stopPropagation();
+    state.time = 0.0;
+    state.lastAct = -1;
+    state.stringsPlucked = 0;
+    state.lanternsSaved = 0;
+    state.endingModalShown = false;
+    initEntities();
+    document.getElementById("ending-modal").classList.remove("visible");
+  });
+
+  window.addEventListener("keydown", e => {
+    if (e.key === "m" || e.key === "M") toggleMuteUI();
+  });
+
+  window.addEventListener("resize", resizeAll);
+
+  // Initialize & Launch Render Loop
+  initEntities();
+  buildTimelineMarkers();
+  resizeAll();
+  requestAnimationFrame(renderFrame);
+})();
+</script>
+</body>
+</html>

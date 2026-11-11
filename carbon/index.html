@@ -1,0 +1,4293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>修昼人 · 互动短片</title>
+<style>
+  :root {
+    --bar-h: clamp(44px, 7vh, 76px);
+    --gold: #f3cf8a;
+    --gold-bright: #ffeab8;
+    --gold-dim: rgba(243, 207, 138, 0.36);
+    --ink: #05070d;
+    --paper: #f4efe6;
+    --cinnabar: #b93a2c;
+    --serif: "Songti SC", "Noto Serif SC", "STSong", "Source Han Serif SC", "SimSun", serif;
+    --sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: var(--serif);
+    touch-action: none;
+  }
+
+  #stage {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #05070d;
+    cursor: none;
+  }
+
+  #stage.ui-cursor {
+    cursor: default;
+  }
+
+  #gl-canvas,
+  #scene-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  #gl-canvas {
+    z-index: 1;
+  }
+
+  #scene-canvas {
+    z-index: 2;
+  }
+
+  /* 宽银幕遮幅 */
+  .letterbox {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: var(--bar-h);
+    background: #04050a;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    padding: 0 clamp(16px, 3vw, 42px);
+    transition: opacity 0.8s ease;
+  }
+
+  .letterbox-top {
+    top: 0;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(243, 207, 138, 0.12);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  }
+
+  .letterbox-bottom {
+    bottom: 0;
+    flex-direction: column;
+    justify-content: center;
+    border-top: 1px solid rgba(243, 207, 138, 0.12);
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.55);
+  }
+
+  .top-left, .top-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  #chapter-tag {
+    font-family: var(--serif);
+    font-size: clamp(12px, 1.35vw, 15px);
+    letter-spacing: 0.22em;
+    color: rgba(244, 239, 230, 0.82);
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+
+  #chapter-tag.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  #agency-pill {
+    font-family: var(--sans);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    color: var(--gold);
+    background: rgba(243, 207, 138, 0.08);
+    border: 1px solid rgba(243, 207, 138, 0.24);
+    border-radius: 999px;
+    padding: 4px 12px;
+    opacity: 0;
+    transition: opacity 0.4s ease, border-color 0.3s ease;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  #agency-pill.active {
+    opacity: 0.92;
+    border-color: rgba(243, 207, 138, 0.52);
+  }
+
+  .hud-btn {
+    cursor: pointer;
+    font-family: var(--sans);
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    color: rgba(244, 239, 230, 0.84);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(243, 207, 138, 0.22);
+    border-radius: 999px;
+    padding: 5px 13px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    transition: background 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+  }
+
+  .hud-btn:hover {
+    background: rgba(243, 207, 138, 0.14);
+    border-color: rgba(243, 207, 138, 0.55);
+    color: var(--gold-bright);
+  }
+
+  .hud-btn svg {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  #reopen-card-btn {
+    display: none;
+  }
+
+  #reopen-card-btn.show {
+    display: inline-flex;
+  }
+
+  /* 电影字幕层 */
+  #subtitle-layer {
+    position: absolute;
+    left: 50%;
+    bottom: calc(var(--bar-h) + clamp(14px, 2.4vh, 28px));
+    transform: translateX(-50%);
+    width: min(90vw, 960px);
+    text-align: center;
+    z-index: 12;
+    pointer-events: none;
+  }
+
+  #subtitle-main {
+    font-family: var(--serif);
+    font-size: clamp(15px, 1.85vw, 23px);
+    line-height: 1.6;
+    letter-spacing: 0.12em;
+    color: #f8f4ec;
+    text-shadow:
+      0 2px 10px rgba(0, 0, 0, 0.92),
+      0 0 24px rgba(0, 0, 0, 0.78);
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.65s ease, transform 0.65s ease;
+  }
+
+  #subtitle-main.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  #subtitle-hint {
+    margin-top: 7px;
+    font-family: var(--sans);
+    font-size: clamp(11px, 1.1vw, 13px);
+    letter-spacing: 0.18em;
+    color: rgba(243, 207, 138, 0.78);
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.95);
+    opacity: 0;
+    transition: opacity 0.8s ease;
+  }
+
+  #subtitle-hint.visible {
+    opacity: 1;
+  }
+
+  /* 进度条与章节刻度 */
+  .timeline-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  #timeline-track {
+    position: relative;
+    flex: 1;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+  }
+
+  .timeline-rail {
+    position: relative;
+    width: 100%;
+    height: 2px;
+    background: rgba(244, 239, 230, 0.16);
+    border-radius: 2px;
+    overflow: visible;
+    transition: height 0.2s ease;
+  }
+
+  #timeline-track:hover .timeline-rail {
+    height: 4px;
+  }
+
+  #timeline-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0%;
+    background: linear-gradient(90deg, #9fb4d8, var(--gold), #ffdf9a);
+    border-radius: 2px;
+  }
+
+  #timeline-head {
+    position: absolute;
+    top: 50%;
+    left: 0%;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--gold-bright);
+    box-shadow: 0 0 10px rgba(255, 234, 184, 0.85);
+    transform: translate(-50%, -50%) scale(0.75);
+    transition: transform 0.2s ease;
+  }
+
+  #timeline-track:hover #timeline-head {
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+
+  .act-tick {
+    position: absolute;
+    top: 50%;
+    width: 1px;
+    height: 8px;
+    background: rgba(243, 207, 138, 0.36);
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  #time-readout {
+    font-family: var(--sans);
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: rgba(244, 239, 230, 0.55);
+    min-width: 82px;
+    text-align: right;
+  }
+
+  /* 启封片头层 */
+  #intro-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 48%, rgba(7, 11, 22, 0.28) 0%, rgba(4, 6, 12, 0.72) 100%);
+    cursor: pointer;
+    transition: opacity 1.1s ease, visibility 1.1s ease;
+  }
+
+  #intro-overlay.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .astrolabe-emblem {
+    width: clamp(72px, 9vw, 108px);
+    height: clamp(72px, 9vw, 108px);
+    margin-bottom: 18px;
+    opacity: 0.9;
+    animation: slowSpin 38s linear infinite;
+  }
+
+  @keyframes slowSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .film-title {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: clamp(34px, 5.2vw, 66px);
+    letter-spacing: 0.42em;
+    padding-left: 0.42em;
+    color: #f8f2e4;
+    text-shadow: 0 4px 28px rgba(0, 0, 0, 0.8), 0 0 40px rgba(243, 207, 138, 0.25);
+  }
+
+  .film-sub {
+    margin-top: 14px;
+    font-family: var(--serif);
+    font-size: clamp(13px, 1.4vw, 17px);
+    letter-spacing: 0.26em;
+    padding-left: 0.26em;
+    color: rgba(243, 207, 138, 0.86);
+  }
+
+  .film-meta {
+    margin-top: 10px;
+    font-family: var(--sans);
+    font-size: clamp(11px, 1.05vw, 13px);
+    letter-spacing: 0.16em;
+    color: rgba(244, 239, 230, 0.56);
+  }
+
+  #start-btn {
+    margin-top: 34px;
+    padding: 11px 32px;
+    font-family: var(--serif);
+    font-size: clamp(14px, 1.35vw, 17px);
+    letter-spacing: 0.3em;
+    padding-left: calc(32px + 0.3em);
+    color: var(--gold-bright);
+    background: rgba(243, 207, 138, 0.1);
+    border: 1px solid rgba(243, 207, 138, 0.48);
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 0 28px rgba(243, 207, 138, 0.16);
+    transition: transform 0.25s ease, background 0.25s ease, box-shadow 0.25s ease;
+  }
+
+  #intro-overlay:hover #start-btn {
+    background: rgba(243, 207, 138, 0.2);
+    box-shadow: 0 0 38px rgba(243, 207, 138, 0.32);
+    transform: scale(1.03);
+  }
+
+  /* 终章印记卡 */
+  #ending-card {
+    position: absolute;
+    right: clamp(20px, 5vw, 76px);
+    top: 50%;
+    transform: translateY(-50%) translateX(18px);
+    width: min(88vw, 390px);
+    z-index: 18;
+    padding: clamp(22px, 2.8vw, 32px);
+    background: rgba(9, 13, 22, 0.76);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(243, 207, 138, 0.34);
+    border-radius: 6px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.9s ease, transform 0.9s ease, visibility 0.9s ease;
+    cursor: default;
+  }
+
+  #ending-card.visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(-50%) translateX(0);
+  }
+
+  .ending-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    border-bottom: 1px solid rgba(243, 207, 138, 0.18);
+    padding-bottom: 14px;
+  }
+
+  .ending-kicker {
+    font-family: var(--sans);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    color: rgba(243, 207, 138, 0.72);
+    margin-bottom: 6px;
+  }
+
+  #ending-title {
+    font-family: var(--serif);
+    font-size: clamp(22px, 2.3vw, 28px);
+    font-weight: 400;
+    letter-spacing: 0.16em;
+    color: #fff6e5;
+  }
+
+  /* 朱砂篆刻印章 */
+  #ending-seal {
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    border: 2px solid #d24b3a;
+    border-radius: 3px;
+    color: #e45a48;
+    background: rgba(185, 58, 44, 0.12);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    place-items: center;
+    padding: 3px;
+    font-family: var(--serif);
+    font-size: 15px;
+    line-height: 1;
+    font-weight: 700;
+    box-shadow: inset 0 0 0 1px rgba(228, 90, 72, 0.35);
+  }
+
+  #ending-poem {
+    margin-top: 15px;
+    font-family: var(--serif);
+    font-size: 14px;
+    line-height: 1.8;
+    letter-spacing: 0.08em;
+    color: rgba(244, 239, 230, 0.88);
+  }
+
+  .stats-grid {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .stat-item {
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid rgba(243, 207, 138, 0.14);
+    border-radius: 4px;
+    padding: 9px 12px;
+  }
+
+  .stat-label {
+    font-family: var(--sans);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: rgba(244, 239, 230, 0.56);
+  }
+
+  .stat-val {
+    margin-top: 4px;
+    font-family: var(--serif);
+    font-size: 17px;
+    letter-spacing: 0.08em;
+    color: var(--gold-bright);
+  }
+
+  .ending-actions {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+  }
+
+  .card-btn {
+    flex: 1;
+    padding: 9px 12px;
+    font-family: var(--sans);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.22s ease;
+    text-align: center;
+  }
+
+  .card-btn-primary {
+    background: rgba(243, 207, 138, 0.18);
+    border: 1px solid rgba(243, 207, 138, 0.55);
+    color: var(--gold-bright);
+  }
+
+  .card-btn-primary:hover {
+    background: rgba(243, 207, 138, 0.3);
+  }
+
+  .card-btn-secondary {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(244, 239, 230, 0.22);
+    color: rgba(244, 239, 230, 0.84);
+  }
+
+  .card-btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+  }
+
+  @media (max-width: 760px) {
+    #ending-card {
+      right: 50%;
+      transform: translate(50%, -50%);
+    }
+    #ending-card.visible {
+      transform: translate(50%, -50%);
+    }
+    #agency-pill {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="gl-canvas"></canvas>
+  <canvas id="scene-canvas"></canvas>
+
+  <!-- 顶部宽银幕遮幅 -->
+  <header class="letterbox letterbox-top" id="top-bar">
+    <div class="top-left">
+      <div id="chapter-tag">壹 · 镜海微澜</div>
+      <div id="agency-pill">同行微风</div>
+    </div>
+    <div class="top-right">
+      <button class="hud-btn" id="reopen-card-btn" type="button" title="查看终章印记">终章印记</button>
+      <button class="hud-btn" id="mute-btn" type="button" aria-label="切换静音" title="切换静音 (M)">
+        <svg id="icon-sound-on" viewBox="0 0 24 24">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+        </svg>
+        <svg id="icon-sound-off" viewBox="0 0 24 24" style="display:none">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <line x1="23" y1="9" x2="17" y2="15"></line>
+          <line x1="17" y1="9" x2="23" y2="15"></line>
+        </svg>
+        <span id="mute-label">声音：开</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 字幕层 -->
+  <div id="subtitle-layer">
+    <div id="subtitle-main"></div>
+    <div id="subtitle-hint"></div>
+  </div>
+
+  <!-- 底部宽银幕遮幅与时间轴 -->
+  <footer class="letterbox letterbox-bottom" id="bottom-bar">
+    <div class="timeline-row">
+      <div id="timeline-track" title="点击跳转章节">
+        <div class="timeline-rail">
+          <div id="timeline-fill"></div>
+          <div class="act-tick" style="left: 20.24%"></div>
+          <div class="act-tick" style="left: 41.67%"></div>
+          <div class="act-tick" style="left: 64.29%"></div>
+          <div class="act-tick" style="left: 85.71%"></div>
+          <div id="timeline-head"></div>
+        </div>
+      </div>
+      <div id="time-readout">00:00 / 02:48</div>
+    </div>
+  </footer>
+
+  <!-- 启封片头层 -->
+  <div id="intro-overlay">
+    <svg class="astrolabe-emblem" viewBox="0 0 120 120" fill="none">
+      <circle cx="60" cy="60" r="54" stroke="rgba(243,207,138,0.35)" stroke-width="0.9" stroke-dasharray="3 4"/>
+      <circle cx="60" cy="60" r="42" stroke="rgba(243,207,138,0.68)" stroke-width="1.1"/>
+      <ellipse cx="60" cy="60" rx="42" ry="17" transform="rotate(-28 60 60)" stroke="rgba(243,207,138,0.52)" stroke-width="1"/>
+      <ellipse cx="60" cy="60" rx="42" ry="17" transform="rotate(32 60 60)" stroke="rgba(243,207,138,0.38)" stroke-width="0.9"/>
+      <circle cx="60" cy="60" r="5" fill="#ffeab8"/>
+      <line x1="60" y1="4" x2="60" y2="18" stroke="#f3cf8a" stroke-width="1.2"/>
+      <line x1="60" y1="102" x2="60" y2="116" stroke="#f3cf8a" stroke-width="1.2"/>
+    </svg>
+    <h1 class="film-title">修昼人</h1>
+    <p class="film-sub">一部由你的手势共同谱写的互动短片</p>
+    <p class="film-meta">片长 02:48 · 实时合成配乐 · 静观或介入皆成终章</p>
+    <button id="start-btn" type="button">启封放映</button>
+  </div>
+
+  <!-- 终章印记卡 -->
+  <aside id="ending-card">
+    <div class="ending-header">
+      <div>
+        <div class="ending-kicker" id="ending-kicker">终章 · 折光纪要</div>
+        <h2 id="ending-title">金缮满昼</h2>
+      </div>
+      <div id="ending-seal" aria-hidden="true">
+        <span>金</span><span>缮</span><span>满</span><span>昼</span>
+      </div>
+    </div>
+    <p id="ending-poem"></p>
+    <div class="stats-grid">
+      <div class="stat-item">
+        <div class="stat-label">拾起沉昼</div>
+        <div class="stat-val" id="stat-embers">0 缕</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">唤醒风物</div>
+        <div class="stat-val" id="stat-bloom">0 处</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">护火校晷</div>
+        <div class="stat-val" id="stat-shield">0 次</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">金缮天裂</div>
+        <div class="stat-val" id="stat-mend">18%</div>
+      </div>
+    </div>
+    <div class="ending-actions">
+      <button class="card-btn card-btn-primary" id="replay-btn" type="button">再看一次</button>
+      <button class="card-btn card-btn-secondary" id="linger-btn" type="button">留驻晨曦</button>
+    </div>
+  </aside>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // =========================================================================
+  // 1. 核心常量、数学工具与虚拟银幕坐标映射 (1920 x 1080 基准空间，全比例自适应)
+  // =========================================================================
+  const FILM_DURATION = 168.0; // 2 分 48 秒
+  const TAU = Math.PI * 2;
+
+  const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const smoothstep = (e0, e1, x) => {
+    const t = clamp((x - e0) / (e1 - e0 || 1e-6), 0, 1);
+    return t * t * (3 - 2 * t);
+  };
+  const dist2 = (x1, y1, x2, y2) => {
+    const dx = x1 - x2, dy = y1 - y2;
+    return dx * dx + dy * dy;
+  };
+  const hash1 = (n) => {
+    const s = Math.sin(n * 127.1 + 311.7) * 43758.5453123;
+    return s - Math.floor(s);
+  };
+
+  const ACTS = [
+    { idx: 0, start: 0,   end: 34,  tag: '壹 · 镜海微澜', hint: '轻拂水面点亮千檐窗火 · 向上牵引水底碎金归入桅灯' },
+    { idx: 1, start: 34,  end: 70,  tag: '貳 · 风碑长峡', hint: '掠过悬弦唤醒绝壁春花 · 按住拖曳绘出托帆长风' },
+    { idx: 2, start: 70,  end: 108, tag: '叁 · 碎时涡流', hint: '移至舟前撑起折光护盾 · 按住旋转三道铜环对准金缺' },
+    { idx: 3, start: 108, end: 144, tag: '肆 · 金缮日心', hint: '按住或拂过日心裂痕 · 以流金修补破碎的白昼' },
+    { idx: 4, start: 144, end: 168, tag: '伍 · 人间破晓', hint: '轻点或拂过晨空 · 放飞祈愿天灯与白鹭' }
+  ];
+
+  const view = {
+    w: window.innerWidth || 1920,
+    h: window.innerHeight || 1080,
+    dpr: Math.min(window.devicePixelRatio || 1, 2),
+    scale: 1,
+    cx: 960,
+    cy: 540
+  };
+
+  const worldToScreenX = (wx) => (wx - 960) * view.scale + view.w * 0.5;
+  const worldToScreenY = (wy) => (wy - 540) * view.scale + view.h * 0.5;
+  const screenToWorldX = (sx) => (sx - view.w * 0.5) / view.scale + 960;
+  const screenToWorldY = (sy) => (sy - view.h * 0.5) / view.scale + 540;
+
+  // 预渲染高性能力场发光精灵，彻底避免循环内 shadowBlur 造成掉帧
+  const SPRITES = {};
+  function makeGlowSprite(stops) {
+    const c = document.createElement('canvas');
+    c.width = 96;
+    c.height = 96;
+    const gctx = c.getContext('2d');
+    const grad = gctx.createRadialGradient(48, 48, 0, 48, 48, 48);
+    for (let i = 0; i < stops.length; i++) {
+      grad.addColorStop(stops[i][0], stops[i][1]);
+    }
+    gctx.fillStyle = grad;
+    gctx.fillRect(0, 0, 96, 96);
+    return c;
+  }
+
+  SPRITES.gold = makeGlowSprite([
+    [0.0, 'rgba(255, 250, 225, 1.0)'],
+    [0.22, 'rgba(255, 214, 122, 0.82)'],
+    [0.55, 'rgba(235, 148, 56, 0.26)'],
+    [1.0, 'rgba(235, 148, 56, 0.0)']
+  ]);
+  SPRITES.warm = makeGlowSprite([
+    [0.0, 'rgba(255, 238, 195, 0.95)'],
+    [0.32, 'rgba(255, 178, 90, 0.45)'],
+    [1.0, 'rgba(255, 130, 50, 0.0)']
+  ]);
+  SPRITES.cyan = makeGlowSprite([
+    [0.0, 'rgba(232, 255, 252, 0.95)'],
+    [0.28, 'rgba(112, 232, 214, 0.58)'],
+    [0.65, 'rgba(52, 158, 172, 0.18)'],
+    [1.0, 'rgba(52, 158, 172, 0.0)']
+  ]);
+  SPRITES.rose = makeGlowSprite([
+    [0.0, 'rgba(255, 240, 235, 0.95)'],
+    [0.32, 'rgba(255, 156, 142, 0.52)'],
+    [1.0, 'rgba(210, 88, 98, 0.0)']
+  ]);
+  SPRITES.silver = makeGlowSprite([
+    [0.0, 'rgba(245, 250, 255, 0.95)'],
+    [0.3, 'rgba(176, 204, 242, 0.48)'],
+    [1.0, 'rgba(120, 152, 210, 0.0)']
+  ]);
+
+  function drawGlow(ctx, sprite, x, y, radius, alpha = 1) {
+    if (alpha <= 0.004 || radius <= 0.2) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = clamp(alpha, 0, 1);
+    const d = radius * 2;
+    ctx.drawImage(sprite, x - radius, y - radius, d, d);
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 2. WebGL2 实时体积云霞、折射天穹与镜海水波着色器 (含安全 2D 降级)
+  // =========================================================================
+  class SkyWaterRenderer {
+    constructor(canvas) {
+      this.canvas = canvas;
+      this.gl = null;
+      this.prog = null;
+      this.vao = null;
+      this.u = {};
+      this.fallbackCtx = null;
+      this.init();
+    }
+
+    init() {
+      try {
+        const gl = this.canvas.getContext('webgl2', {
+          alpha: false,
+          antialias: false,
+          depth: false,
+          stencil: false,
+          powerPreference: 'high-performance'
+        });
+        if (!gl) throw new Error('WebGL2 unavailable');
+
+        const vsSrc = `#version 300 es
+in vec2 a_pos;
+void main() {
+  gl_Position = vec4(a_pos, 0.0, 1.0);
+}`.trim();
+
+        const fsSrc = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+
+uniform vec2 u_res;
+uniform float u_time;
+uniform float u_seaLevel;
+uniform float u_storm;
+uniform float u_dawn;
+uniform float u_warmth;
+uniform float u_emerald;
+uniform vec2 u_sunPos;
+uniform float u_sunMend;
+uniform vec4 u_mouse;
+uniform vec3 u_boatLight;
+uniform float u_flash;
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash21(i);
+  float b = hash21(i + vec2(1.0, 0.0));
+  float c = hash21(i + vec2(0.0, 1.0));
+  float d = hash21(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+float fbm(vec2 p) {
+  float v = 0.0;
+  float a = 0.5;
+  mat2 rot = mat2(0.80, -0.60, 0.60, 0.80);
+  for (int i = 0; i < 5; i++) {
+    v += a * vnoise(p);
+    p = rot * p * 2.03 + vec2(17.1, 31.7);
+    a *= 0.5;
+  }
+  return v;
+}
+
+vec3 aces(vec3 x) {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+
+vec3 evalSky(vec2 uv, float aspect, float t) {
+  vec2 p = vec2((uv.x - 0.5) * aspect, uv.y);
+  vec2 sp = vec2((u_sunPos.x - 0.5) * aspect, u_sunPos.y);
+  float dSun = length(p - sp);
+
+  // 基础夜色与风暴色板
+  vec3 nightTop = mix(vec3(0.020, 0.034, 0.075), vec3(0.015, 0.016, 0.035), u_storm);
+  vec3 nightHor = mix(vec3(0.058, 0.105, 0.185), vec3(0.085, 0.068, 0.135), u_storm);
+  nightHor += vec3(0.08, 0.045, 0.01) * u_warmth * (1.0 - u_dawn * 0.5);
+  nightHor += vec3(0.01, 0.065, 0.06) * u_emerald;
+
+  // 破晓色板（随观众互动倾向在银白、赤金、翠霞之间流转）
+  vec3 silverTop = vec3(0.11, 0.17, 0.28);
+  vec3 silverHor = vec3(0.46, 0.55, 0.68);
+  vec3 goldTop = vec3(0.09, 0.15, 0.30);
+  vec3 goldHor = vec3(0.95, 0.52, 0.24);
+  vec3 jadeHor = vec3(0.32, 0.76, 0.68);
+
+  float rich = clamp(u_warmth * 0.7 + u_sunMend * 0.6, 0.0, 1.0);
+  vec3 dawnTop = mix(silverTop, goldTop, rich);
+  vec3 dawnHor = mix(silverHor, goldHor, rich);
+  dawnHor = mix(dawnHor, mix(dawnHor, jadeHor, 0.42), u_emerald);
+
+  float hGrad = clamp(uv.y / max(u_seaLevel, 0.25), 0.0, 1.35);
+  vec3 sky = mix(
+    mix(nightTop, nightHor, pow(clamp(hGrad, 0.0, 1.0), 1.35)),
+    mix(dawnTop, dawnHor, pow(clamp(hGrad, 0.0, 1.0), 1.15)),
+    u_dawn
+  );
+
+  // 漩涡云层与流霞
+  vec2 flow = p * vec2(1.8, 2.7);
+  if (u_storm > 0.01) {
+    vec2 rel = p - sp;
+    float ang = u_storm * 0.65 / (length(rel) + 0.32);
+    float cs = cos(ang), sn = sin(ang);
+    flow = mat2(cs, -sn, sn, cs) * flow;
+  }
+  float n1 = fbm(flow + vec2(t * 0.028, -t * 0.012));
+  float n2 = fbm(flow * 1.9 - vec2(t * 0.042, t * 0.019) + n1 * 0.65);
+  float cloud = smoothstep(0.34, 0.86, n1 * 0.62 + n2 * 0.48);
+
+  // 云层受日心与破晓照亮
+  vec3 cloudDark = mix(vec3(0.03, 0.05, 0.09), vec3(0.02, 0.02, 0.04), u_storm);
+  vec3 cloudLitNight = mix(vec3(0.13, 0.19, 0.30), vec3(0.34, 0.24, 0.16), u_warmth * 0.8);
+  vec3 cloudLitDawn = mix(vec3(0.72, 0.80, 0.90), vec3(1.18, 0.76, 0.42), rich);
+  cloudLitDawn = mix(cloudLitDawn, vec3(0.75, 0.98, 0.86), u_emerald * 0.35);
+
+  float sunProx = exp(-dSun * 2.6);
+  vec3 cloudCol = mix(cloudDark, mix(cloudLitNight, cloudLitDawn, u_dawn), clamp(0.28 + sunProx * 0.95 + u_dawn * 0.45, 0.0, 1.0));
+  sky = mix(sky, cloudCol, cloud * (0.52 + u_storm * 0.28));
+
+  // 极光风带 (第二幕与生春结局显著)
+  if (u_emerald > 0.02) {
+    float ribbon = sin(p.x * 3.6 + n1 * 4.2 - t * 0.35) * 0.5 + 0.5;
+    float band = pow(ribbon, 4.0) * smoothstep(0.65, 0.05, uv.y) * u_emerald;
+    sky += vec3(0.12, 0.52, 0.46) * band * 0.45;
+  }
+
+  // 日心日冕与体积佛光 (God Rays)
+  float rayAng = atan(p.y - sp.y, p.x - sp.x);
+  float rays = sin(rayAng * 12.0 + t * 0.25) * 0.5 + 0.5;
+  rays *= sin(rayAng * 7.0 - t * 0.18) * 0.5 + 0.5;
+  float rayMask = exp(-dSun * (2.8 - u_dawn * 1.4)) * (0.3 + 0.7 * rays) * (1.0 - cloud * 0.55);
+  vec3 sunHue = mix(vec3(0.55, 0.68, 0.92), vec3(1.35, 0.92, 0.48), clamp(u_sunMend + u_dawn * rich, 0.0, 1.0));
+  sky += sunHue * rayMask * (0.22 + u_sunMend * 0.55 + u_dawn * 0.85);
+  sky += sunHue * exp(-dSun * 9.5) * (0.35 + u_dawn * 1.25);
+
+  // 风暴闪电
+  if (u_flash > 0.005) {
+    sky += vec3(0.55, 0.65, 0.92) * u_flash * smoothstep(0.85, 0.1, dSun) * (0.4 + n2 * 0.8);
+  }
+
+  // 夜空微星
+  float nightVis = (1.0 - u_dawn * 0.85) * (1.0 - cloud * 0.85) * (1.0 - u_storm * 0.6);
+  if (nightVis > 0.02) {
+    vec2 sg = floor(p * 190.0);
+    float sh = hash21(sg);
+    if (sh > 0.9945) {
+      vec2 sc = fract(p * 190.0) - 0.5;
+      float tw = 0.55 + 0.45 * sin(t * 2.8 + sh * 90.0);
+      float star = smoothstep(0.28, 0.0, length(sc)) * tw;
+      sky += vec3(0.85, 0.90, 1.0) * star * nightVis;
+    }
+  }
+
+  // 扁舟桅灯对云雾的暖色晕染
+  vec2 bp = vec2((u_boatLight.x - 0.5) * aspect, u_boatLight.y);
+  float dBoat = length(p - bp);
+  sky += vec3(1.0, 0.68, 0.28) * exp(-dBoat * 5.2) * u_boatLight.z * 0.42;
+
+  return sky;
+}
+
+void main() {
+  vec2 uv = vec2(gl_FragCoord.x / u_res.x, 1.0 - gl_FragCoord.y / u_res.y);
+  float aspect = u_res.x / max(u_res.y, 1.0);
+  float t = u_time;
+
+  // 光标轻柔折射场
+  vec2 mp = vec2((u_mouse.x - 0.5) * aspect, u_mouse.y);
+  vec2 cp = vec2((uv.x - 0.5) * aspect, uv.y);
+  float dMouse = length(cp - mp);
+  float lens = exp(-dMouse * 8.5) * (0.005 + u_mouse.z * 0.012 + u_mouse.w * 0.010);
+  vec2 warpedUV = uv + normalize(uv - u_mouse.xy + 1e-5) * lens;
+
+  vec3 col;
+  if (warpedUV.y <= u_seaLevel) {
+    col = evalSky(warpedUV, aspect, t);
+  } else {
+    // 镜海反射与动态波纹
+    float depth = (warpedUV.y - u_seaLevel) / max(1.0 - u_seaLevel, 0.15);
+    float persp = 1.0 / (depth * 6.0 + 0.18);
+    float wave1 = sin(warpedUV.x * 42.0 + t * 1.9 + persp * 3.5);
+    float wave2 = sin(warpedUV.x * 95.0 - t * 2.7 + persp * 8.2);
+    float rippleM = sin(dMouse * 68.0 - t * 7.5) * exp(-dMouse * 5.5) * (0.35 + u_mouse.z * 1.6);
+
+    vec2 reflUV = vec2(
+      warpedUV.x + (wave1 * 0.008 + wave2 * 0.004) * (0.25 + depth) + rippleM * 0.012,
+      u_seaLevel - (warpedUV.y - u_seaLevel) * 0.88 + wave1 * 0.005 * depth
+    );
+    reflUV.y = clamp(reflUV.y, 0.01, max(u_seaLevel - 0.002, 0.02));
+
+    vec3 reflSky = evalSky(reflUV, aspect, t);
+    vec3 deepSea = mix(
+      vec3(0.014, 0.030, 0.062),
+      mix(vec3(0.06, 0.11, 0.18), vec3(0.11, 0.16, 0.22), u_dawn),
+      clamp(u_warmth * 0.5 + u_dawn * 0.7, 0.0, 1.0)
+    );
+    float fresnel = exp(-depth * 2.2);
+    col = mix(deepSea, reflSky * 0.88, clamp(0.32 + fresnel * 0.62, 0.0, 0.95));
+
+    // 水面碎金波光柱 (桅灯与旭日)
+    float boatDX = abs(warpedUV.x - u_boatLight.x + wave1 * 0.016 * (0.3 + depth));
+    float boatGlitter = exp(-boatDX * 26.0) * exp(-depth * 2.4) * (0.55 + 0.45 * wave2);
+    col += vec3(1.05, 0.72, 0.30) * boatGlitter * u_boatLight.z * 0.78;
+
+    float sunDX = abs(warpedUV.x - u_sunPos.x + (wave1 * 0.022 + wave2 * 0.01) * (0.2 + depth));
+    float sunGlitter = exp(-sunDX * (14.0 - u_dawn * 6.0)) * exp(-depth * 1.6) * (0.5 + 0.5 * wave2);
+    vec3 sunWaterHue = mix(vec3(0.55, 0.70, 0.95), vec3(1.25, 0.82, 0.40), clamp(u_warmth + u_dawn * 0.6, 0.0, 1.0));
+    col += sunWaterHue * sunGlitter * (0.12 + u_dawn * 0.75);
+
+    // 水平线薄雾交界
+    float horizonMist = exp(-abs(warpedUV.y - u_seaLevel) * 55.0);
+    col = mix(col, reflSky * 1.05, horizonMist * 0.55);
+  }
+
+  // 光标微光晕
+  col += mix(vec3(0.45, 0.68, 0.95), vec3(1.0, 0.82, 0.46), clamp(u_warmth + u_dawn, 0.0, 1.0))
+       * exp(-dMouse * 14.0) * (0.06 + u_mouse.z * 0.14 + u_mouse.w * 0.12);
+
+  // 胶片暗角与细微颗粒防色带
+  vec2 vigUV = uv * (1.0 - uv.yx);
+  float vig = pow(clamp(vigUV.x * vigUV.y * 16.0, 0.0, 1.0), 0.18);
+  col *= mix(0.68, 1.0, vig);
+
+  col = aces(col);
+  col = pow(col, vec3(0.94));
+  float grain = (hash21(gl_FragCoord.xy + fract(t) * 137.0) - 0.5) * 0.018;
+  fragColor = vec4(clamp(col + grain, 0.0, 1.0), 1.0);
+}`.trim();
+
+        const compile = (type, src) => {
+          const s = gl.createShader(type);
+          gl.shaderSource(s, src);
+          gl.compileShader(s);
+          if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+            const log = gl.getShaderInfoLog(s);
+            gl.deleteShader(s);
+            throw new Error(log || 'Shader compile error');
+          }
+          return s;
+        };
+
+        const vs = compile(gl.VERTEX_SHADER, vsSrc);
+        const fs = compile(gl.FRAGMENT_SHADER, fsSrc);
+        const prog = gl.createProgram();
+        gl.attachShader(prog, vs);
+        gl.attachShader(prog, fs);
+        gl.linkProgram(prog);
+        gl.deleteShader(vs);
+        gl.deleteShader(fs);
+        if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+          throw new Error(gl.getProgramInfoLog(prog) || 'Program link error');
+        }
+
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const vbo = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+        gl.bufferData(
+          gl.ARRAY_BUFFER,
+          new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
+          gl.STATIC_DRAW
+        );
+        const posLoc = gl.getAttribLocation(prog, 'a_pos');
+        gl.enableVertexAttribArray(posLoc);
+        gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+        gl.bindVertexArray(null);
+
+        this.gl = gl;
+        this.prog = prog;
+        this.vao = vao;
+        const names = [
+          'u_res', 'u_time', 'u_seaLevel', 'u_storm', 'u_dawn',
+          'u_warmth', 'u_emerald', 'u_sunPos', 'u_sunMend',
+          'u_mouse', 'u_boatLight', 'u_flash'
+        ];
+        for (const name of names) {
+          this.u[name] = gl.getUniformLocation(prog, name);
+        }
+      } catch (_err) {
+        this.gl = null;
+        this.fallbackCtx = this.canvas.getContext('2d');
+      }
+    }
+
+    resize(w, h, dpr) {
+      const internalScale = this.gl ? Math.min(dpr, 1.5) * 0.68 : 1;
+      this.canvas.width = Math.max(2, Math.floor(w * internalScale));
+      this.canvas.height = Math.max(2, Math.floor(h * internalScale));
+      if (this.gl) {
+        this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+      }
+    }
+
+    render(params) {
+      const gl = this.gl;
+      if (gl && this.prog) {
+        gl.useProgram(this.prog);
+        gl.bindVertexArray(this.vao);
+        gl.uniform2f(this.u.u_res, this.canvas.width, this.canvas.height);
+        gl.uniform1f(this.u.u_time, params.time);
+        gl.uniform1f(this.u.u_seaLevel, params.seaLevel);
+        gl.uniform1f(this.u.u_storm, params.storm);
+        gl.uniform1f(this.u.u_dawn, params.dawn);
+        gl.uniform1f(this.u.u_warmth, params.warmth);
+        gl.uniform1f(this.u.u_emerald, params.emerald);
+        gl.uniform2f(this.u.u_sunPos, params.sunX, params.sunY);
+        gl.uniform1f(this.u.u_sunMend, params.sunMend);
+        gl.uniform4f(this.u.u_mouse, params.mx, params.my, params.mVel, params.mDown);
+        gl.uniform3f(this.u.u_boatLight, params.bx, params.by, params.bLight);
+        gl.uniform1f(this.u.u_flash, params.flash);
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        return;
+      }
+
+      // 备用 2D 渲染通道（倘若极端环境下 WebGL2 不可用亦不报错）
+      const ctx = this.fallbackCtx;
+      if (!ctx) return;
+      const cw = this.canvas.width, ch = this.canvas.height;
+      const g = ctx.createLinearGradient(0, 0, 0, ch);
+      if (params.dawn > 0.4) {
+        g.addColorStop(0, '#182848');
+        g.addColorStop(clamp(params.seaLevel, 0.1, 0.9), '#d98845');
+        g.addColorStop(1, '#122238');
+      } else {
+        g.addColorStop(0, '#060b18');
+        g.addColorStop(clamp(params.seaLevel, 0.1, 0.9), '#162844');
+        g.addColorStop(1, '#07101f');
+      }
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, cw, ch);
+    }
+  }
+
+  // =========================================================================
+  // 3. Web Audio 实时合成电影配乐与互动拟音引擎 (零外部音频，纯算法合成)
+  // =========================================================================
+  class SoundEngine {
+    constructor() {
+      this.ctx = null;
+      this.ready = false;
+      this.muted = false;
+      this.masterGain = null;
+      this.dryBus = null;
+      this.reverbSend = null;
+      this.delaySend = null;
+      this.noiseFilter = null;
+      this.noiseGain = null;
+      this.nextPadTime = 0;
+      this.nextPulseTime = 0;
+      this.padStep = 0;
+      this.lastChimeAt = 0;
+      this.lastWindAt = 0;
+      this.lastWeldAt = 0;
+    }
+
+    unlock() {
+      if (this.ready) {
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+        return;
+      }
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      this.ctx = ctx;
+
+      // 主总线压缩限幅，确保多声部叠加清澈不爆音
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -15;
+      comp.knee.value = 18;
+      comp.ratio.value = 4;
+      comp.attack.value = 0.005;
+      comp.release.value = 0.22;
+
+      const master = ctx.createGain();
+      master.gain.value = this.muted ? 0.0001 : 0.85;
+      comp.connect(master);
+      master.connect(ctx.destination);
+      this.masterGain = master;
+
+      const dry = ctx.createGain();
+      dry.gain.value = 0.82;
+      dry.connect(comp);
+      this.dryBus = dry;
+
+      // 算法生成立体声音乐厅脉冲响应混响 (3.2 秒)
+      const convolver = ctx.createConvolver();
+      const irLen = Math.floor(ctx.sampleRate * 3.2);
+      const irBuf = ctx.createBuffer(2, irLen, ctx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const data = irBuf.getChannelData(ch);
+        let lp = 0;
+        for (let i = 0; i < irLen; i++) {
+          const k = i / irLen;
+          const env = Math.pow(1 - k, 2.7) * (i < 900 ? i / 900 : 1);
+          const white = Math.random() * 2 - 1;
+          lp = lp * 0.72 + white * 0.28;
+          data[i] = lp * env * 0.55;
+        }
+      }
+      convolver.buffer = irBuf;
+      const revSend = ctx.createGain();
+      revSend.gain.value = 0.52;
+      const revRet = ctx.createGain();
+      revRet.gain.value = 0.68;
+      revSend.connect(convolver);
+      convolver.connect(revRet);
+      revRet.connect(comp);
+      this.reverbSend = revSend;
+
+      // 立体声柔和延时回声
+      const delSend = ctx.createGain();
+      delSend.gain.value = 0.28;
+      const delL = ctx.createDelay(1.0);
+      const delR = ctx.createDelay(1.0);
+      delL.delayTime.value = 0.29;
+      delR.delayTime.value = 0.43;
+      const fb = ctx.createGain();
+      fb.gain.value = 0.32;
+      const fbFilter = ctx.createBiquadFilter();
+      fbFilter.type = 'lowpass';
+      fbFilter.frequency.value = 1750;
+      const merger = ctx.createChannelMerger(2);
+      delSend.connect(delL);
+      delL.connect(delR);
+      delR.connect(fbFilter);
+      fbFilter.connect(fb);
+      fb.connect(delL);
+      delL.connect(merger, 0, 0);
+      delR.connect(merger, 0, 1);
+      merger.connect(comp);
+      this.delaySend = delSend;
+
+      // 持续海浪 / 峡风 / 高空风暴粉红噪声层
+      const nLen = ctx.sampleRate * 4;
+      const nBuf = ctx.createBuffer(1, nLen, ctx.sampleRate);
+      const nData = nBuf.getChannelData(0);
+      let b0 = 0, b1 = 0, b2 = 0;
+      for (let i = 0; i < nLen; i++) {
+        const w = Math.random() * 2 - 1;
+        b0 = 0.997 * b0 + w * 0.029;
+        b1 = 0.985 * b1 + w * 0.032;
+        b2 = 0.950 * b2 + w * 0.048;
+        nData[i] = clamp((b0 + b1 + b2 + w * 0.018) * 0.85, -1, 1);
+      }
+      const nSrc = ctx.createBufferSource();
+      nSrc.buffer = nBuf;
+      nSrc.loop = true;
+      const nFilter = ctx.createBiquadFilter();
+      nFilter.type = 'bandpass';
+      nFilter.frequency.value = 280;
+      nFilter.Q.value = 0.9;
+      const nGain = ctx.createGain();
+      nGain.gain.value = 0.08;
+      nSrc.connect(nFilter);
+      nFilter.connect(nGain);
+      nGain.connect(dry);
+      nGain.connect(revSend);
+      nSrc.start();
+
+      this.noiseFilter = nFilter;
+      this.noiseGain = nGain;
+      this.ready = true;
+      this.nextPadTime = ctx.currentTime + 0.05;
+      this.nextPulseTime = ctx.currentTime + 0.2;
+
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      // 启封共鸣钟声
+      if (!this.muted) {
+        this.playNote(293.66, 2.8, 0.14, 'sine', 0.65);
+        this.playNote(440.00, 3.2, 0.10, 'triangle', 0.7);
+        this.playNote(587.33, 3.6, 0.07, 'sine', 0.8);
+      }
+    }
+
+    setMuted(flag) {
+      this.muted = flag;
+      if (this.ready && this.masterGain && this.ctx) {
+        const now = this.ctx.currentTime;
+        this.masterGain.gain.cancelScheduledValues(now);
+        this.masterGain.gain.setTargetAtTime(flag ? 0.0001 : 0.85, now, 0.04);
+      }
+    }
+
+    midiToFreq(m) {
+      return 440 * Math.pow(2, (m - 69) / 12);
+    }
+
+    playNote(freq, dur, amp = 0.12, type = 'sine', revAmt = 0.5, attack = 0.015, filterHz = 3600) {
+      if (!this.ready || !this.ctx) return;
+      const ctx = this.ctx;
+      const now = ctx.currentTime;
+      const f = clamp(freq, 32, 12000);
+
+      const osc = ctx.createOscillator();
+      osc.type = type;
+      osc.frequency.setValueAtTime(f, now);
+
+      const flt = ctx.createBiquadFilter();
+      flt.type = 'lowpass';
+      flt.frequency.setValueAtTime(clamp(filterHz, 120, 14000), now);
+      flt.frequency.exponentialRampToValueAtTime(clamp(filterHz * 0.42, 90, 12000), now + dur);
+
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.linearRampToValueAtTime(Math.max(0.0002, amp), now + attack);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+      osc.connect(flt);
+      flt.connect(g);
+      g.connect(this.dryBus);
+      if (revAmt > 0.05) {
+        const rs = ctx.createGain();
+        rs.gain.value = revAmt;
+        g.connect(rs);
+        rs.connect(this.reverbSend);
+        rs.connect(this.delaySend);
+      }
+
+      osc.start(now);
+      osc.stop(now + dur + 0.06);
+    }
+
+    spawnPadChord(midis, dur, amp, brightness) {
+      if (!this.ready || !this.ctx) return;
+      const ctx = this.ctx;
+      const now = ctx.currentTime;
+      for (let i = 0; i < midis.length; i++) {
+        const baseF = this.midiToFreq(midis[i]);
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        osc1.type = i === 0 ? 'triangle' : 'sine';
+        osc2.type = 'sawtooth';
+        osc1.frequency.setValueAtTime(baseF * 0.9985, now);
+        osc2.frequency.setValueAtTime(baseF * 1.002, now);
+
+        const mix2 = ctx.createGain();
+        mix2.gain.value = 0.22;
+
+        const flt = ctx.createBiquadFilter();
+        flt.type = 'lowpass';
+        flt.frequency.setValueAtTime(clamp(brightness, 260, 4800), now);
+
+        const env = ctx.createGain();
+        const vAmp = Math.max(0.0002, amp / Math.sqrt(midis.length));
+        env.gain.setValueAtTime(0.0001, now);
+        env.gain.linearRampToValueAtTime(vAmp, now + dur * 0.34);
+        env.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+        osc1.connect(flt);
+        osc2.connect(mix2);
+        mix2.connect(flt);
+        flt.connect(env);
+        env.connect(this.dryBus);
+        env.connect(this.reverbSend);
+
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + dur + 0.08);
+        osc2.stop(now + dur + 0.08);
+      }
+    }
+
+    update(filmTime, started, storm, dawn, warmth) {
+      if (!this.ready || !this.ctx) return;
+      const ctx = this.ctx;
+      const now = ctx.currentTime;
+
+      // 环境风浪随五幕平滑演进
+      const waveLfo = 0.5 + 0.5 * Math.sin(now * (0.8 + storm * 2.2));
+      let targetHz = 260 + waveLfo * 140;
+      let targetGain = 0.055 + waveLfo * 0.03;
+      if (started) {
+        if (filmTime >= 34 && filmTime < 70) {
+          targetHz = 440 + waveLfo * 240;
+          targetGain = 0.07 + waveLfo * 0.035;
+        } else if (filmTime >= 70 && filmTime < 108) {
+          targetHz = 620 + storm * 480 + waveLfo * 280;
+          targetGain = 0.11 + storm * 0.07;
+        } else if (filmTime >= 108 && filmTime < 138) {
+          targetHz = 210 + waveLfo * 60;
+          targetGain = 0.025;
+        } else if (filmTime >= 138) {
+          targetHz = 350 + waveLfo * 150;
+          targetGain = 0.05 + dawn * 0.025;
+        }
+      }
+      this.noiseFilter.frequency.setTargetAtTime(clamp(targetHz, 80, 4000), now, 0.15);
+      this.noiseGain.gain.setTargetAtTime(clamp(targetGain, 0.001, 0.24), now, 0.15);
+
+      if (!started) return;
+
+      // 五幕和声进行 (统一围绕 B 小调 / D 宫五声 / D Lydian 黎明调式，所有互动音效天然协和)
+      if (now >= this.nextPadTime) {
+        let chords;
+        let bright = 780 + warmth * 650 + dawn * 1400;
+        let padDur = 4.6;
+        let padAmp = 0.11;
+
+        if (filmTime < 34) {
+          chords = [
+            [47, 54, 57, 62, 66], // Bm7
+            [43, 50, 57, 62, 66], // Gmaj9
+            [50, 57, 62, 64, 69], // Dsus2
+            [45, 52, 57, 61, 64]  // A
+          ];
+        } else if (filmTime < 70) {
+          chords = [
+            [40, 47, 54, 59, 62], // Em9
+            [43, 50, 57, 62, 66], // Gmaj7
+            [47, 54, 59, 62, 69], // Bm7
+            [45, 52, 57, 64, 66]  // A6
+          ];
+          bright += 260;
+        } else if (filmTime < 108) {
+          chords = [
+            [35, 47, 54, 57, 62], // Bm storm
+            [31, 43, 50, 55, 59], // G low
+            [30, 42, 49, 54, 57], // F#m
+            [33, 45, 52, 57, 61]  // A
+          ];
+          padDur = 3.4;
+          padAmp = 0.135;
+          bright = 920 + storm * 450;
+        } else if (filmTime < 138) {
+          chords = [
+            [43, 50, 57, 62, 66], // Gmaj7
+            [45, 52, 57, 64, 69], // Asus4/A
+            [47, 54, 62, 66, 69], // Bm9
+            [43, 50, 57, 64, 68]  // G#dim/Lydian shimmer
+          ];
+          padDur = 4.2;
+          padAmp = 0.095 + (filmTime - 108) / 30 * 0.05;
+        } else {
+          // 破晓至终章：辉煌温暖的 D Lydian / Dmaj9
+          chords = [
+            [38, 50, 57, 62, 66, 69, 73], // Dmaj9
+            [43, 50, 57, 62, 68, 71, 74], // G Lydian
+            [47, 54, 62, 66, 69, 73],     // Bm9
+            [45, 52, 57, 64, 69, 73]      // Aadd9
+          ];
+          padDur = 5.0;
+          padAmp = 0.145;
+          bright = 1950 + warmth * 850;
+        }
+
+        const chord = chords[this.padStep % chords.length];
+        this.padStep++;
+        this.spawnPadChord(chord, padDur, padAmp, bright);
+        this.nextPadTime = now + padDur * 0.72;
+      }
+
+      // 第三幕风暴低音脉动与其他章节空灵星点泛音
+      if (now >= this.nextPulseTime) {
+        if (filmTime >= 70 && filmTime < 108) {
+          const roots = [35, 35, 38, 42, 31, 31, 33, 33];
+          const m = roots[this.padStep % roots.length];
+          this.playNote(this.midiToFreq(m), 0.36, 0.085, 'sawtooth', 0.25, 0.01, 520);
+          this.nextPulseTime = now + 0.28;
+        } else if (filmTime >= 138) {
+          const notes = [74, 76, 78, 81, 83, 86];
+          const m = notes[Math.floor(Math.random() * notes.length)];
+          this.playNote(this.midiToFreq(m), 1.9, 0.045, 'sine', 0.75, 0.02, 5200);
+          this.nextPulseTime = now + 0.65 + Math.random() * 0.6;
+        } else {
+          const notes = [62, 64, 66, 69, 71, 74, 78];
+          const m = notes[Math.floor(Math.random() * notes.length)];
+          this.playNote(this.midiToFreq(m), 2.1, 0.032, 'sine', 0.8, 0.025, 3800);
+          this.nextPulseTime = now + 1.15 + Math.random() * 1.1;
+        }
+      }
+    }
+
+    // 互动乐器：千檐窗火清脆钢片琴
+    playWindowChime(idx) {
+      if (!this.ready || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      if (now - this.lastChimeAt < 0.055) return;
+      this.lastChimeAt = now;
+      const scale = [74, 76, 78, 81, 83, 86, 88, 90];
+      const f = this.midiToFreq(scale[idx % scale.length]);
+      this.playNote(f, 1.35, 0.075, 'sine', 0.75, 0.006, 6500);
+      this.playNote(f * 2, 0.55, 0.024, 'sine', 0.6, 0.004, 8000);
+    }
+
+    // 互动乐器：沉昼破水与融入桅灯
+    playEmberSplash() {
+      if (!this.ready || !this.ctx) return;
+      const scale = [62, 66, 69, 74, 78, 81];
+      const base = Math.floor(Math.random() * 3);
+      this.playNote(this.midiToFreq(scale[base]), 0.9, 0.08, 'triangle', 0.65, 0.008, 3600);
+      this.playNote(this.midiToFreq(scale[base + 2]), 1.2, 0.065, 'sine', 0.75, 0.04, 4800);
+    }
+
+    playEmberAbsorb(count) {
+      if (!this.ready || !this.ctx) return;
+      const scale = [62, 64, 66, 69, 71, 74, 76, 78, 81, 86];
+      const m = scale[clamp(count, 0, scale.length - 1)];
+      const f = this.midiToFreq(m);
+      this.playNote(f, 1.8, 0.095, 'triangle', 0.8, 0.012, 4400);
+      this.playNote(f * 1.498, 2.1, 0.055, 'sine', 0.85, 0.02, 5600);
+    }
+
+    // 互动乐器：风碑古筝悬弦拨奏
+    playGuzhengPluck(idx) {
+      if (!this.ready || !this.ctx) return;
+      const scale = [50, 52, 54, 57, 59, 62, 64, 66, 69, 71, 74];
+      const f = this.midiToFreq(scale[idx % scale.length]);
+      this.playNote(f, 2.2, 0.12, 'sawtooth', 0.72, 0.005, 2900);
+      this.playNote(f * 2, 1.1, 0.045, 'triangle', 0.65, 0.005, 4800);
+    }
+
+    // 互动乐器：绘风呼哨泛音
+    playWindBrush(speedNorm) {
+      if (!this.ready || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      if (now - this.lastWindAt < 0.11) return;
+      this.lastWindAt = now;
+      const scale = [66, 69, 71, 74, 76, 78, 81];
+      const pick = clamp(Math.floor(speedNorm * scale.length), 0, scale.length - 1);
+      this.playNote(this.midiToFreq(scale[pick]), 0.85, 0.038 * (0.5 + speedNorm), 'sine', 0.85, 0.05, 3200);
+    }
+
+    // 互动乐器：折光护盾击碎蚀影冰晶
+    playShieldShatter() {
+      if (!this.ready || !this.ctx) return;
+      const notes = [81, 85, 88, 93];
+      const m = notes[Math.floor(Math.random() * notes.length)];
+      const f = this.midiToFreq(m);
+      this.playNote(f, 0.48, 0.085, 'triangle', 0.65, 0.003, 7500);
+      this.playNote(f * 1.26, 0.35, 0.055, 'sine', 0.7, 0.012, 8500);
+    }
+
+    // 互动乐器：天干铜环归位浑厚钟鸣
+    playRingLock(ringIdx) {
+      if (!this.ready || !this.ctx) return;
+      const roots = [38, 45, 50];
+      const f = this.midiToFreq(roots[ringIdx % 3]);
+      this.playNote(f, 3.6, 0.18, 'triangle', 0.85, 0.01, 1800);
+      this.playNote(f * 2.0, 2.8, 0.11, 'sine', 0.85, 0.01, 3400);
+      this.playNote(f * 2.996, 2.2, 0.065, 'sine', 0.8, 0.015, 4800);
+    }
+
+    // 互动乐器：金缮熔金补天渐升泛音
+    playKintsugiWeld(mendRatio) {
+      if (!this.ready || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      if (now - this.lastWeldAt < 0.075) return;
+      this.lastWeldAt = now;
+      const scale = [62, 64, 66, 68, 69, 71, 73, 74, 76, 78, 80, 81, 85, 86];
+      const idx = clamp(Math.floor(mendRatio * (scale.length - 1)), 0, scale.length - 1);
+      const f = this.midiToFreq(scale[idx]);
+      this.playNote(f, 1.4, 0.075, 'triangle', 0.82, 0.01, 4600);
+      this.playNote(f * 0.5, 1.6, 0.045, 'sine', 0.7, 0.02, 2200);
+    }
+
+    // 第四幕高潮：第零次黎明轰然破晓
+    playDawnEruption(richness) {
+      if (!this.ready || !this.ctx) return;
+      // 低频大鼓与恢弘 Lydian 圣咏齐鸣
+      this.playNote(55.0, 3.8, 0.24, 'sine', 0.6, 0.01, 280);
+      this.playNote(73.42, 4.5, 0.22, 'triangle', 0.8, 0.02, 900);
+      const chord = richness > 0.35
+        ? [50, 57, 62, 66, 69, 73, 76, 78, 86]
+        : [50, 57, 62, 69, 74, 81];
+      this.spawnPadChord(chord, 6.5, 0.22, 3800);
+    }
+
+    // 终章放飞天灯与白鹭
+    playLanternBell() {
+      if (!this.ready || !this.ctx) return;
+      const scale = [74, 76, 78, 81, 85, 86];
+      const f = this.midiToFreq(scale[Math.floor(Math.random() * scale.length)]);
+      this.playNote(f, 1.9, 0.068, 'sine', 0.85, 0.008, 5600);
+    }
+  }
+
+  // =========================================================================
+  // 4. 叙事世界状态、物理结构与五幕视觉实体构建
+  // =========================================================================
+  const STEMS = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
+
+  const state = {
+    started: false,
+    ended: false,
+    cardDismissed: false,
+    filmTime: 0,
+    prevFilmTime: 0,
+    ambientTime: 0,
+    actIdx: 0,
+
+    // 观众互动留存的叙事因果变量
+    embersGathered: 0,
+    windowsLit: 0,
+    stringsPlucked: 0,
+    windStrokesCount: 0,
+    shardsDeflected: 0,
+    ringsAligned: 0,
+    kintsugiRatio: 0,
+    epilogueLanterns: 0,
+
+    // 实时平滑视觉参数
+    seaWorldY: 700,
+    stormAmt: 0,
+    dawnAmt: 0,
+    warmthAmt: 0,
+    emeraldAmt: 0,
+    sunWX: 1360,
+    sunWY: 255,
+    sunRadius: 86,
+    lightningFlash: 0,
+    shake: 0,
+    dawnTriggered: false,
+    dawnShockwave: -1,
+
+    // 顶部互动反馈胶囊
+    agencyText: '同行微风',
+    agencyTimer: 0,
+
+    // 终章结算结果
+    endingKey: 'witness'
+  };
+
+  const pointer = {
+    sx: 960,
+    sy: 540,
+    wx: 960,
+    wy: 540,
+    pwx: 960,
+    pwy: 540,
+    vx: 0,
+    vy: 0,
+    speed: 0,
+    down: false,
+    inside: false,
+    overUI: false,
+    dragRingIdx: -1,
+    dragPrevAng: 0
+  };
+
+  function notifyAgency(label) {
+    state.agencyText = label;
+    state.agencyTimer = 2.6;
+  }
+
+  // 粒子池与水面涟漪池 (O(1) 回收，严控上限保 60fps)
+  const MAX_PARTICLES = 460;
+  const particles = [];
+  const ripples = [];
+  const windRibbons = []; // 第二幕观众手绘流风轨
+  const skyLanterns = []; // 第五幕祈愿天灯
+  const cranes = [];      // 第五幕破晓白鹭
+
+  function spawnParticle(opts) {
+    if (particles.length >= MAX_PARTICLES) {
+      particles[Math.floor(Math.random() * 40)] = opts;
+      return;
+    }
+    particles.push(opts);
+  }
+
+  function spawnRipple(x, y, maxR = 75, alpha = 0.55, hue = 'gold') {
+    if (ripples.length > 60) ripples.shift();
+    ripples.push({ x, y, r: 4, maxR, alpha, life: 1, hue });
+  }
+
+  // 主角小晷与木舟刚柔耦合系统
+  const boat = {
+    x: 470,
+    y: 700,
+    vx: 0,
+    vy: 0,
+    tilt: 0,
+    oarPhase: 0,
+    lanternPower: 0.25,
+    hitRecoil: 0,
+    bowAmount: 0,
+    sailNodes: [],
+    cloakNodes: [],
+    orbitEmbers: []
+  };
+
+  function initBoatChains() {
+    boat.sailNodes = [];
+    for (let i = 0; i < 7; i++) {
+      boat.sailNodes.push({ x: boat.x - i * 9, y: boat.y - 78 + i * 5, ox: boat.x - i * 9, oy: boat.y - 78 + i * 5 });
+    }
+    boat.cloakNodes = [];
+    for (let i = 0; i < 5; i++) {
+      boat.cloakNodes.push({ x: boat.x + 10 - i * 6, y: boat.y - 26 + i * 4, ox: boat.x + 10 - i * 6, oy: boat.y - 26 + i * 4 });
+    }
+  }
+
+  // 第一幕 & 第五幕：千檐港高脚木楼群与水下沉昼碎金
+  const harborHouses = [];
+  const sunkenEmbers = [];
+
+  function buildHarborAndEmbers() {
+    harborHouses.length = 0;
+    const layers = [
+      { count: 15, depth: 0.35, yBase: 695, scale: 0.62, xSpan: 2600 },
+      { count: 12, depth: 0.62, yBase: 702, scale: 0.84, xSpan: 2500 },
+      { count: 9,  depth: 0.88, yBase: 710, scale: 1.06, xSpan: 2400 }
+    ];
+    let winId = 0;
+    for (let l = 0; l < layers.length; l++) {
+      const cfg = layers[l];
+      for (let i = 0; i < cfg.count; i++) {
+        const seed = l * 100 + i * 17 + 3;
+        const bx = -280 + (i + 0.15 + hash1(seed) * 0.65) * (cfg.xSpan / cfg.count);
+        const w = (64 + hash1(seed + 1) * 58) * cfg.scale;
+        const h = (82 + hash1(seed + 2) * 115) * cfg.scale;
+        const stiltH = (36 + hash1(seed + 3) * 44) * cfg.scale;
+        const roofOverhang = (14 + hash1(seed + 4) * 10) * cfg.scale;
+        const tiers = hash1(seed + 5) > 0.52 ? 2 : 1;
+        const wins = [];
+        const cols = Math.max(1, Math.floor(w / (24 * cfg.scale)));
+        const rows = tiers === 2 ? 2 : 1;
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            if (hash1(seed + r * 7 + c * 13) > 0.22) {
+              wins.push({
+                id: winId++,
+                rx: (c + 0.5) / cols - 0.5,
+                ry: 0.28 + r * 0.36,
+                w: 9 * cfg.scale,
+                h: 13 * cfg.scale,
+                lit: hash1(seed + c * 29 + r) > 0.86 ? 0.55 : 0,
+                autoLit: hash1(seed + c * 29 + r) > 0.86
+              });
+            }
+          }
+        }
+        harborHouses.push({
+          bx, w, h, stiltH, roofOverhang, tiers,
+          depth: cfg.depth,
+          yBase: cfg.yBase,
+          scale: cfg.scale,
+          bloomSeed: hash1(seed + 9),
+          wins
+        });
+      }
+    }
+
+    sunkenEmbers.length = 0;
+    for (let i = 0; i < 14; i++) {
+      sunkenEmbers.push({
+        id: i,
+        baseX: 250 + i * 115 + (hash1(i * 19) - 0.5) * 55,
+        x: 250 + i * 115,
+        y: 765 + hash1(i * 31) * 230,
+        vx: 0,
+        vy: 0,
+        phase: hash1(i * 43) * TAU,
+        state: 'sunken', // 'sunken' | 'rising' | 'homing' | 'captured'
+        autoCatchAt: i === 2 ? 11.5 : (i === 7 ? 23.5 : 999)
+      });
+    }
+  }
+
+  // 第二幕：风碑长峡巨石、Verlet 悬弦与绝壁春花
+  const monoliths = [];
+  const canyonStrings = [];
+  const cliffBlossoms = [];
+
+  function buildCanyon() {
+    monoliths.length = 0;
+    canyonStrings.length = 0;
+    cliffBlossoms.length = 0;
+
+    const xs = [-120, 145, 390, 650, 930, 1210, 1485, 1755, 2010];
+    for (let i = 0; i < xs.length; i++) {
+      const seed = i * 37 + 11;
+      const w = 78 + hash1(seed) * 68;
+      const topY = 55 + hash1(seed + 2) * 195;
+      const depth = i % 2 === 0 ? 0.72 : 0.94;
+      monoliths.push({
+        id: i,
+        baseX: xs[i],
+        x: xs[i],
+        topY,
+        w,
+        depth,
+        runeGlow: 0,
+        notchOffset: (hash1(seed + 5) - 0.5) * 18
+      });
+    }
+
+    // 在石碑之间架设 10 根可拨奏的古铜丝弦 (Verlet 悬链线)
+    const pairs = [
+      [0, 1, 260, 290],
+      [1, 2, 210, 245],
+      [1, 3, 355, 330],
+      [2, 3, 185, 225],
+      [2, 4, 420, 395],
+      [3, 4, 255, 215],
+      [4, 5, 310, 275],
+      [4, 6, 445, 410],
+      [5, 6, 195, 235],
+      [6, 7, 295, 250]
+    ];
+
+    for (let s = 0; s < pairs.length; s++) {
+      const [mA, mB, yA, yB] = pairs[s];
+      const segs = 12;
+      const pts = [];
+      for (let k = 0; k <= segs; k++) {
+        const t = k / segs;
+        const px = lerp(monoliths[mA].baseX, monoliths[mB].baseX, t);
+        const py = lerp(yA, yB, t) + Math.sin(t * Math.PI) * 32;
+        pts.push({ x: px, y: py, ox: px, oy: py });
+      }
+      canyonStrings.push({
+        id: s,
+        mA, mB, yA, yB,
+        pts,
+        energy: 0,
+        pluckedCount: 0,
+        cooldown: 0
+      });
+    }
+  }
+
+  function spawnCliffBlossom(wx, wy, scale = 1) {
+    if (cliffBlossoms.length > 72) return;
+    const branches = [];
+    const count = 3 + Math.floor(Math.random() * 3);
+    const baseAng = (Math.random() < 0.5 ? 0 : Math.PI) + (Math.random() - 0.5) * 1.1 - 0.35;
+    for (let i = 0; i < count; i++) {
+      const ang = baseAng + (i - (count - 1) * 0.5) * 0.42;
+      const len = (26 + Math.random() * 38) * scale;
+      branches.push({
+        ang,
+        len,
+        curve: (Math.random() - 0.5) * 0.5,
+        hue: Math.random() > 0.35 ? 'cyan' : 'rose'
+      });
+    }
+    cliffBlossoms.push({ x: wx, y: wy, grow: 0.01, branches });
+  }
+
+  // 第三幕：三道 3D 天干铜环与蚀影风雹
+  const celestialRings = [];
+  const shadowShards = [];
+
+  function buildTempestRings() {
+    celestialRings.length = 0;
+    const configs = [
+      { r: 175, tiltX: 0.62, tiltZ: -0.34, initAng: 1.85, targetAng: 0.35, speed: 0.22 },
+      { r: 248, tiltX: 0.52, tiltZ: 0.42,  initAng: -1.45, targetAng: 0.95, speed: -0.17 },
+      { r: 326, tiltX: 0.68, tiltZ: -0.15, initAng: 2.65, targetAng: -0.55, speed: 0.13 }
+    ];
+    for (let i = 0; i < configs.length; i++) {
+      const c = configs[i];
+      celestialRings.push({
+        idx: i,
+        r: c.r,
+        tiltX: c.tiltX,
+        tiltZ: c.tiltZ,
+        angle: c.initAng,
+        targetAngle: c.targetAng,
+        driftSpeed: c.speed,
+        angVel: 0,
+        locked: false,
+        lockGlow: 0,
+        hover: 0
+      });
+    }
+    shadowShards.length = 0;
+  }
+
+  // 第四幕：太初日心与金缮裂痕网络
+  const sunCracks = [];
+
+  function buildSunCracks() {
+    sunCracks.length = 0;
+    // 在归一化单位圆 (-1..1) 内构建 7 条自然分叉的瓷裂星脉
+    const paths = [
+      [[-0.04, -0.92], [0.03, -0.54], [-0.08, -0.18], [0.02, 0.16], [-0.05, 0.55], [0.04, 0.93]],
+      [[-0.08, -0.18], [-0.36, -0.34], [-0.66, -0.52], [-0.86, -0.44]],
+      [[0.02, 0.16], [0.34, 0.04], [0.64, -0.16], [0.90, -0.08]],
+      [[0.03, -0.54], [0.32, -0.62], [0.58, -0.78]],
+      [[-0.05, 0.55], [-0.38, 0.44], [-0.72, 0.62]],
+      [[0.02, 0.16], [0.28, 0.42], [0.54, 0.68], [0.76, 0.60]],
+      [[-0.36, -0.34], [-0.52, -0.04], [-0.82, 0.12]]
+    ];
+    let order = 0;
+    for (let p = 0; p < paths.length; p++) {
+      const nodes = paths[p];
+      for (let i = 0; i < nodes.length - 1; i++) {
+        // 每段再细分为 2 小节，令金缮涂抹手感细腻顺滑
+        const ax = nodes[i][0], ay = nodes[i][1];
+        const bx = nodes[i + 1][0], by = nodes[i + 1][1];
+        const mx = (ax + bx) * 0.5 + (hash1(order * 13 + 7) - 0.5) * 0.06;
+        const my = (ay + by) * 0.5 + (hash1(order * 29 + 3) - 0.5) * 0.06;
+        sunCracks.push({
+          x1: ax, y1: ay, x2: mx, y2: my,
+          mended: 0,
+          isCore: p === 0,
+          order: order++
+        });
+        sunCracks.push({
+          x1: mx, y1: my, x2: bx, y2: by,
+          mended: 0,
+          isCore: p === 0,
+          order: order++
+        });
+      }
+    }
+  }
+
+  // 第五幕：放飞祈愿天灯与破晓白鹭
+  function spawnSkyLantern(wx, wy, userTriggered = false) {
+    if (skyLanterns.length > 55) skyLanterns.shift();
+    skyLanterns.push({
+      x: wx,
+      y: wy,
+      vx: (Math.random() - 0.5) * 14,
+      vy: -22 - Math.random() * 26,
+      size: (userTriggered ? 13 : 9) + Math.random() * 7,
+      phase: Math.random() * TAU,
+      alpha: 0.01
+    });
+  }
+
+  function spawnCrane(wx, wy) {
+    if (cranes.length > 28) cranes.shift();
+    const dir = wx < 960 ? 1 : -1;
+    cranes.push({
+      x: wx,
+      y: wy,
+      vx: dir * (58 + Math.random() * 38),
+      vy: -12 - Math.random() * 18,
+      span: 18 + Math.random() * 14,
+      flap: Math.random() * TAU
+    });
+  }
+
+  function resetWorldState() {
+    state.ended = false;
+    state.cardDismissed = false;
+    state.filmTime = 0;
+    state.prevFilmTime = 0;
+    state.actIdx = 0;
+
+    state.embersGathered = 0;
+    state.windowsLit = 0;
+    state.stringsPlucked = 0;
+    state.windStrokesCount = 0;
+    state.shardsDeflected = 0;
+    state.ringsAligned = 0;
+    state.kintsugiRatio = 0;
+    state.epilogueLanterns = 0;
+
+    state.seaWorldY = 700;
+    state.stormAmt = 0;
+    state.dawnAmt = 0;
+    state.warmthAmt = 0;
+    state.emeraldAmt = 0;
+    state.sunWX = 1360;
+    state.sunWY = 255;
+    state.sunRadius = 86;
+    state.lightningFlash = 0;
+    state.shake = 0;
+    state.dawnTriggered = false;
+    state.dawnShockwave = -1;
+    state.agencyTimer = 0;
+
+    particles.length = 0;
+    ripples.length = 0;
+    windRibbons.length = 0;
+    skyLanterns.length = 0;
+    cranes.length = 0;
+
+    boat.x = 470;
+    boat.y = 700;
+    boat.vx = 0;
+    boat.vy = 0;
+    boat.tilt = 0;
+    boat.lanternPower = 0.26;
+    boat.hitRecoil = 0;
+    boat.bowAmount = 0;
+    boat.orbitEmbers = [];
+    initBoatChains();
+
+    buildHarborAndEmbers();
+    buildCanyon();
+    buildTempestRings();
+    buildSunCracks();
+  }
+
+  // =========================================================================
+  // 5. 几何碰撞辅助与 3D 天球圆环投影工具
+  // =========================================================================
+  function pointSegDist2(px, py, ax, ay, bx, by) {
+    const vx = bx - ax, vy = by - ay;
+    const wx = px - ax, wy = py - ay;
+    const l2 = vx * vx + vy * vy;
+    if (l2 < 1e-4) return dist2(px, py, ax, ay);
+    const t = clamp((wx * vx + wy * vy) / l2, 0, 1);
+    const cx = ax + t * vx, cy = ay + t * vy;
+    return dist2(px, py, cx, cy);
+  }
+
+  function ccw(ax, ay, bx, by, cx, cy) {
+    return (cy - ay) * (bx - ax) > (by - ay) * (cx - ax);
+  }
+
+  function segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+    return (ccw(ax, ay, cx, cy, dx, dy) !== ccw(bx, by, cx, cy, dx, dy)) &&
+           (ccw(ax, ay, bx, by, cx, cy) !== ccw(ax, ay, bx, by, dx, dy));
+  }
+
+  function angleDiff(a, b) {
+    let d = (b - a) % TAU;
+    if (d > Math.PI) d -= TAU;
+    if (d < -Math.PI) d += TAU;
+    return d;
+  }
+
+  // 将圆环局部角 theta 投影到银幕世界坐标 (带前后景深 z)
+  function projectRingPoint(ring, theta, cx, cy, radiusScale = 1) {
+    const r = ring.r * radiusScale;
+    const lx = Math.cos(theta) * r;
+    const ly = Math.sin(theta) * r * Math.cos(ring.tiltX);
+    const lz = Math.sin(theta) * r * Math.sin(ring.tiltX);
+    const cz = Math.cos(ring.tiltZ), sz = Math.sin(ring.tiltZ);
+    const persp = 1 + lz / 1100;
+    return {
+      x: cx + (lx * cz - ly * sz) * persp,
+      y: cy + (lx * sz + ly * cz) * persp,
+      z: lz
+    };
+  }
+
+  // =========================================================================
+  // 6. 实例化视听引擎与五幕物理/叙事主模拟步进
+  // =========================================================================
+  const stageEl = document.getElementById('stage');
+  const glCanvas = document.getElementById('gl-canvas');
+  const sceneCanvas = document.getElementById('scene-canvas');
+  const ctx = sceneCanvas.getContext('2d');
+
+  const glSky = new SkyWaterRenderer(glCanvas);
+  const sound = new SoundEngine();
+
+  function getActIndex(t) {
+    if (t < 34) return 0;
+    if (t < 70) return 1;
+    if (t < 108) return 2;
+    if (t < 144) return 3;
+    return 4;
+  }
+
+  function updateWorld(dt) {
+    const t = state.filmTime;
+    const amb = state.ambientTime;
+    state.actIdx = getActIndex(t);
+
+    if (state.agencyTimer > 0) {
+      state.agencyTimer = Math.max(0, state.agencyTimer - dt);
+    }
+
+    // 1) 计算五幕全局镜头、海平面、天体坐标与色调演进
+    let targetSeaY = 700;
+    let targetSunX = 1380;
+    let targetSunY = 250;
+    let targetSunR = 78;
+    let targetStorm = 0;
+    let targetDawn = 0;
+
+    if (!state.started) {
+      targetSeaY = 705;
+      targetSunX = 1360;
+      targetSunY = 255;
+      targetSunR = 76;
+    } else if (t < 34) {
+      // 第一幕：镜海启航
+      const p = t / 34;
+      targetSeaY = lerp(705, 735, smoothstep(0.65, 1.0, p));
+      targetSunX = lerp(1360, 1180, p);
+      targetSunY = lerp(255, 225, p);
+      targetSunR = 78;
+    } else if (t < 70) {
+      // 第二幕：风碑长峡，海面退向谷底，镜头仰望千丈石阵
+      const p = (t - 34) / 36;
+      targetSeaY = lerp(735, 935, smoothstep(0.0, 0.45, p));
+      targetSunX = lerp(1180, 990, p);
+      targetSunY = lerp(225, 210, p);
+      targetSunR = lerp(78, 102, p);
+      targetStorm = smoothstep(0.72, 1.0, p) * 0.35;
+    } else if (t < 108) {
+      // 第三幕：碎时涡流，高天风暴与三道铜环
+      const p = (t - 70) / 38;
+      targetSeaY = 1140;
+      targetSunX = 960;
+      targetSunY = 395;
+      targetSunR = 118;
+      const calmFactor = state.ringsAligned * 0.22;
+      targetStorm = clamp(0.88 - calmFactor + Math.sin(t * 1.5) * 0.08, 0.18, 1.0);
+      if (p > 0.86) targetStorm *= lerp(1, 0.15, (p - 0.86) / 0.14);
+    } else if (t < 144) {
+      // 第四幕：太初日心，万籁俱寂 -> 金缮合拢 -> 138s 破晓爆发后镜头徐徐降回海面
+      targetSeaY = lerp(1140, 740, smoothstep(139, 144, t));
+      targetSunX = 960;
+      targetSunY = lerp(395, 355, smoothstep(108, 138, t));
+      targetSunR = lerp(122, 184, smoothstep(108, 116, t));
+      if (t >= 138) {
+        targetSunR = lerp(184, 126, smoothstep(138, 144, t));
+        targetDawn = smoothstep(138, 142.5, t);
+      }
+      targetStorm = 0;
+    } else {
+      // 第五幕：重返人间千檐港，晨曦满海
+      const p = clamp((t - 144) / 24, 0, 1);
+      targetSeaY = lerp(740, 706, smoothstep(0.0, 0.25, p));
+      targetSunX = lerp(960, 1220, smoothstep(0.0, 0.85, p));
+      targetSunY = lerp(355, 275, smoothstep(0.0, 0.85, p));
+      targetSunR = lerp(126, 96, smoothstep(0.0, 0.6, p));
+      targetDawn = 1.0;
+    }
+
+    const kLerp = 1 - Math.exp(-dt * 4.2);
+    state.seaWorldY = lerp(state.seaWorldY, targetSeaY, kLerp);
+    state.sunWX = lerp(state.sunWX, targetSunX, kLerp);
+    state.sunWY = lerp(state.sunWY, targetSunY, kLerp);
+    state.sunRadius = lerp(state.sunRadius, targetSunR, kLerp);
+    state.stormAmt = lerp(state.stormAmt, targetStorm, kLerp);
+    state.dawnAmt = lerp(state.dawnAmt, targetDawn, 1 - Math.exp(-dt * 2.8));
+
+    const targetWarmth = clamp(
+      state.embersGathered * 0.08 + state.windowsLit * 0.015 + state.kintsugiRatio * 0.55,
+      0, 1
+    );
+    const targetEmerald = clamp(
+      state.stringsPlucked * 0.075 + state.windStrokesCount * 0.05,
+      0, 1
+    );
+    state.warmthAmt = lerp(state.warmthAmt, targetWarmth, kLerp);
+    state.emeraldAmt = lerp(state.emeraldAmt, targetEmerald, kLerp);
+
+    state.lightningFlash = Math.max(0, state.lightningFlash - dt * 2.6);
+    state.shake = Math.max(0, state.shake - dt * 24);
+
+    // 138.0 秒：第零次黎明爆发事件
+    if (state.started && state.prevFilmTime < 138.0 && t >= 138.0 && !state.dawnTriggered) {
+      triggerDawnClimax();
+    }
+    if (state.dawnShockwave >= 0) {
+      state.dawnShockwave += dt * 980;
+      if (state.dawnShockwave > 2600) state.dawnShockwave = -1;
+    }
+
+    // 2) 更新小晷木舟轨迹与物理姿态
+    let boatTargetX = 460;
+    let boatTargetY = state.seaWorldY - 4;
+    if (!state.started) {
+      boatTargetX = 460 + Math.sin(amb * 0.6) * 8;
+      boatTargetY = state.seaWorldY - 3 + Math.sin(amb * 1.4) * 3;
+      boat.oarPhase += dt * 0.7;
+    } else if (t < 34) {
+      const p = t / 34;
+      const speedBoost = Math.min(110, state.embersGathered * 12);
+      boatTargetX = lerp(460, 860 + speedBoost, smoothstep(0, 1, p));
+      boatTargetY = state.seaWorldY - 3 + Math.sin(t * 2.1) * 4;
+      boat.oarPhase += dt * (2.1 + Math.min(1.2, state.embersGathered * 0.12));
+      if (Math.sin(boat.oarPhase) > 0.96 && Math.random() < 0.35) {
+        spawnRipple(boat.x - 18, state.seaWorldY + 3, 52, 0.35, 'silver');
+      }
+    } else if (t < 70) {
+      const p = (t - 34) / 36;
+      // 扁舟乘峡谷雾流徐徐升起，在石碑群中央穿行
+      boatTargetX = lerp(890, 960, p) + Math.sin((t - 34) * 0.65) * 75;
+      boatTargetY = lerp(732, 575, smoothstep(0.0, 0.95, p)) + Math.sin(t * 1.8) * 8;
+      boat.oarPhase += dt * 1.2;
+    } else if (t < 108) {
+      // 风暴中心下方逆风稳住舟身
+      boatTargetX = 960 + Math.sin((t - 70) * 0.85) * 95;
+      boatTargetY = lerp(575, 785, smoothstep(70, 76, t)) + Math.cos(t * 1.25) * 16;
+      boat.oarPhase += dt * 0.9;
+    } else if (t < 144) {
+      // 悬停于太初日心正下方，举杖归还昼火
+      boatTargetX = 960;
+      boatTargetY = lerp(785, 702, smoothstep(108, 118, t)) + Math.sin(t * 1.3) * 5;
+    } else {
+      // 归港破晓，平缓驶入苏醒的千檐港湾
+      const p = clamp((t - 144) / 24, 0, 1);
+      boatTargetX = lerp(960, 745, smoothstep(0, 0.88, p));
+      boatTargetY = state.seaWorldY - 3 + Math.sin(amb * 1.6) * 3.5;
+      // 若观众曾伸出援手，小晷在 153 秒后向屏幕深深作揖致意
+      const totalHelp = state.embersGathered + state.stringsPlucked + state.shardsDeflected + state.ringsAligned * 3 + (state.kintsugiRatio > 0.3 ? 5 : 0);
+      if (t >= 153 && totalHelp >= 3) {
+        const bowWave = Math.sin(clamp((t - 153) / 7.5, 0, 1) * Math.PI);
+        boat.bowAmount = lerp(boat.bowAmount, bowWave, dt * 4);
+      } else {
+        boat.bowAmount = lerp(boat.bowAmount, 0, dt * 4);
+      }
+    }
+
+    // 章节切换时若舟横坐标跨度较大则平滑过渡，避免瞬移突兀
+    const prevX = boat.x;
+    boat.x = lerp(boat.x, boatTargetX, 1 - Math.exp(-dt * 2.6));
+    boat.y = lerp(boat.y, boatTargetY, 1 - Math.exp(-dt * 3.4));
+    boat.vx = (boat.x - prevX) / Math.max(dt, 0.001);
+    boat.hitRecoil = Math.max(0, boat.hitRecoil - dt * 2.8);
+    const desiredTilt = clamp(boat.vx * 0.00055, -0.14, 0.14) + Math.sin(amb * 1.9) * 0.025 - boat.hitRecoil * 0.12;
+    boat.tilt = lerp(boat.tilt, desiredTilt, 1 - Math.exp(-dt * 6));
+
+    const targetLantern = clamp(0.28 + state.embersGathered * 0.095 + state.dawnAmt * 0.35 - boat.hitRecoil * 0.1, 0.18, 1.25);
+    boat.lanternPower = lerp(boat.lanternPower, targetLantern, dt * 3.5);
+
+    // 更新船帆与斗篷 Verlet 柔体链
+    const windX = (state.actIdx === 1 ? 36 : state.actIdx === 2 ? -52 : 22) + Math.sin(amb * 2.3) * 14 - boat.vx * 0.12;
+    const windY = state.actIdx === 1 ? -14 : 6;
+    updateRibbonChain(boat.sailNodes, boat.x - 4, boat.y - 76, windX, windY, 9.5, dt);
+    updateRibbonChain(boat.cloakNodes, boat.x + 14, boat.y - 31, windX * 0.72, 12, 6.5, dt);
+
+    // 3) 分幕核心互动与世界实体模拟
+    if (!state.started || t < 36 || t >= 142) {
+      updateHarborAct(dt, t);
+    }
+    if (state.started && t >= 31 && t < 73) {
+      updateCanyonAct(dt, t);
+    }
+    if (state.started && t >= 68 && t < 111) {
+      updateTempestAct(dt, t);
+    }
+    if (state.started && t >= 106 && t < 144) {
+      updateKintsugiAct(dt, t);
+    }
+    if (state.started && t >= 140) {
+      updateEpilogueAct(dt, t);
+    }
+
+    // 4) 更新全局粒子与涟漪
+    updateParticlesAndRipples(dt, amb);
+  }
+
+  function updateRibbonChain(nodes, anchorX, anchorY, fx, fy, segLen, dt) {
+    if (!nodes.length) return;
+    nodes[0].x = anchorX;
+    nodes[0].y = anchorY;
+    const step2 = dt * dt * 28;
+    for (let i = 1; i < nodes.length; i++) {
+      const n = nodes[i];
+      const vx = (n.x - n.ox) * 0.90;
+      const vy = (n.y - n.oy) * 0.90;
+      n.ox = n.x;
+      n.oy = n.y;
+      n.x += vx + fx * step2;
+      n.y += vy + fy * step2;
+    }
+    for (let iter = 0; iter < 3; iter++) {
+      nodes[0].x = anchorX;
+      nodes[0].y = anchorY;
+      for (let i = 0; i < nodes.length - 1; i++) {
+        const a = nodes[i], b = nodes[i + 1];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const d = Math.hypot(dx, dy) || 0.001;
+        const diff = (d - segLen) / d;
+        if (i === 0) {
+          b.x -= dx * diff;
+          b.y -= dy * diff;
+        } else {
+          a.x += dx * diff * 0.5;
+          a.y += dy * diff * 0.5;
+          b.x -= dx * diff * 0.5;
+          b.y -= dy * diff * 0.5;
+        }
+      }
+    }
+  }
+
+  // 第一幕互动：拂水生澜、唤醒千檐窗火、向上牵引水底沉昼
+  function updateHarborAct(dt, t) {
+    const isAct1 = state.started && t < 34.5;
+    const isAct5 = state.started && t >= 142;
+    const camShift = isAct1 ? lerp(0, -240, t / 34) : (isAct5 ? -110 : 0);
+
+    // 光标掠过海面激起涟漪
+    if (pointer.inside && !pointer.overUI && pointer.wy > state.seaWorldY - 12 && pointer.speed > 140) {
+      if (Math.random() < 0.38) {
+        spawnRipple(pointer.wx, clamp(pointer.wy, state.seaWorldY + 2, 1060), 64, 0.42, state.dawnAmt > 0.5 ? 'gold' : 'silver');
+      }
+    }
+
+    // 唤醒千檐木楼灯火
+    for (let i = 0; i < harborHouses.length; i++) {
+      const h = harborHouses[i];
+      const hx = h.bx + camShift * h.depth;
+      const topY = h.yBase - h.stiltH - h.h;
+      for (let w = 0; w < h.wins.length; w++) {
+        const win = h.wins[w];
+        if (isAct5 && (state.warmthAmt > 0.25 || win.autoLit)) {
+          win.lit = Math.min(1, win.lit + dt * 0.9);
+        }
+        if (pointer.inside && !pointer.overUI && win.lit < 0.85) {
+          const wx = hx + win.rx * h.w * 0.78;
+          const wy = topY + win.ry * h.h;
+          if (dist2(pointer.wx, pointer.wy, wx, wy) < 48 * 48) {
+            if (win.lit < 0.2) {
+              state.windowsLit++;
+              sound.playWindowChime(win.id);
+              notifyAgency('点亮千檐灯火');
+              for (let k = 0; k < 5; k++) {
+                spawnParticle({
+                  x: wx, y: wy,
+                  vx: (Math.random() - 0.5) * 45,
+                  vy: -20 - Math.random() * 45,
+                  size: 8 + Math.random() * 8,
+                  life: 0.9 + Math.random() * 0.5,
+                  maxLife: 1.4,
+                  sprite: 'warm'
+                });
+              }
+            }
+            win.lit = 1;
+          }
+        }
+      }
+    }
+
+    if (!isAct1) return;
+
+    // 水下沉昼碎金物理与牵引
+    for (let i = 0; i < sunkenEmbers.length; i++) {
+      const e = sunkenEmbers[i];
+      if (e.state === 'captured') continue;
+
+      if (e.state === 'sunken') {
+        e.phase += dt * 2.2;
+        e.x = e.baseX + camShift * 0.75 + Math.sin(e.phase) * 14;
+        e.y += Math.sin(e.phase * 0.8) * dt * 10;
+
+        // 观众零操作保底：小晷途中自然拾起 2 缕浮光，保证叙事流畅自洽
+        if (t >= e.autoCatchAt) {
+          e.state = 'rising';
+          e.vy = -150;
+        }
+
+        // 观众光标靠近或点击/向上牵引水底碎金
+        if (pointer.inside && !pointer.overUI) {
+          const dSq = dist2(pointer.wx, pointer.wy, e.x, e.y);
+          const pullR = pointer.down ? 165 : 105;
+          if (dSq < pullR * pullR) {
+            const pullStrength = pointer.down ? 420 : (pointer.vy < -60 ? 360 : 210);
+            e.y -= pullStrength * dt;
+            e.x = lerp(e.x, pointer.wx, dt * 3.5);
+            if (e.y <= state.seaWorldY + 26 || pointer.down) {
+              e.state = 'rising';
+              e.vy = -210;
+              notifyAgency('牵引沉昼出水');
+            }
+          }
+        }
+      } else if (e.state === 'rising') {
+        e.vy -= 260 * dt;
+        e.y += e.vy * dt;
+        if (e.y <= state.seaWorldY) {
+          e.state = 'homing';
+          sound.playEmberSplash();
+          spawnRipple(e.x, state.seaWorldY + 2, 92, 0.75, 'gold');
+          for (let k = 0; k < 12; k++) {
+            const ang = -Math.PI * (0.12 + Math.random() * 0.76);
+            const spd = 70 + Math.random() * 140;
+            spawnParticle({
+              x: e.x,
+              y: state.seaWorldY,
+              vx: Math.cos(ang) * spd,
+              vy: Math.sin(ang) * spd,
+              gy: 260,
+              size: 9 + Math.random() * 10,
+              life: 0.75 + Math.random() * 0.45,
+              maxLife: 1.2,
+              sprite: 'gold'
+            });
+          }
+        }
+      } else if (e.state === 'homing') {
+        const tx = boat.x + 22;
+        const ty = boat.y - 52;
+        const dx = tx - e.x, dy = ty - e.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const spd = 460 + (1 - clamp(d / 500, 0, 1)) * 260;
+        e.x += (dx / d) * spd * dt;
+        e.y += (dy / d) * spd * dt - Math.sin(clamp(d / 360, 0, 1) * Math.PI) * 140 * dt;
+        if (Math.random() < 0.75) {
+          spawnParticle({
+            x: e.x, y: e.y,
+            vx: (Math.random() - 0.5) * 24,
+            vy: (Math.random() - 0.5) * 24,
+            size: 11,
+            life: 0.45,
+            maxLife: 0.45,
+            sprite: 'gold'
+          });
+        }
+        if (d < 26) {
+          e.state = 'captured';
+          state.embersGathered++;
+          boat.orbitEmbers.push({
+            ang: Math.random() * TAU,
+            speed: 1.8 + Math.random() * 1.6,
+            orbitR: 12 + Math.random() * 18,
+            yOff: (Math.random() - 0.5) * 14
+          });
+          sound.playEmberAbsorb(state.embersGathered);
+          notifyAgency(`昼火归灯 · 第 ${state.embersGathered} 缕`);
+          for (let k = 0; k < 14; k++) {
+            const a = (k / 14) * TAU;
+            spawnParticle({
+              x: tx, y: ty,
+              vx: Math.cos(a) * (45 + Math.random() * 65),
+              vy: Math.sin(a) * (45 + Math.random() * 65),
+              size: 14,
+              life: 0.7,
+              maxLife: 0.7,
+              sprite: 'gold'
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // 第二幕互动：拨动风碑古弦催开春花、手绘流风轨托帆直上
+  function updateCanyonAct(dt, t) {
+    const localP = clamp((t - 34) / 36, 0, 1);
+    const scrollX = lerp(120, -210, localP);
+
+    for (let i = 0; i < monoliths.length; i++) {
+      const m = monoliths[i];
+      m.x = m.baseX + scrollX * m.depth;
+      m.runeGlow = Math.max(0, m.runeGlow - dt * 0.45);
+    }
+
+    // 悬弦 Verlet 物理与光标扫弦检测
+    const canPluck = pointer.inside && !pointer.overUI && (pointer.speed > 45 || pointer.down);
+    for (let s = 0; s < canyonStrings.length; s++) {
+      const st = canyonStrings[s];
+      st.cooldown = Math.max(0, st.cooldown - dt);
+      st.energy = Math.max(0, st.energy - dt * 0.65);
+
+      const mA = monoliths[st.mA];
+      const mB = monoliths[st.mB];
+      const ax = mA.x, ay = st.yA;
+      const bx = mB.x, by = st.yB;
+      const pts = st.pts;
+      const last = pts.length - 1;
+      const restLen = Math.hypot(bx - ax, by - ay) / last * 1.035;
+
+      pts[0].x = ax; pts[0].y = ay;
+      pts[last].x = bx; pts[last].y = by;
+
+      for (let i = 1; i < last; i++) {
+        const p = pts[i];
+        const vx = (p.x - p.ox) * 0.945;
+        const vy = (p.y - p.oy) * 0.945;
+        p.ox = p.x;
+        p.oy = p.y;
+        p.x += vx + Math.sin(t * 2.2 + s) * 0.08;
+        p.y += vy + 240 * dt * dt;
+
+        if (canPluck && st.cooldown <= 0) {
+          const crossed = segmentsIntersect(pointer.pwx, pointer.pwy, pointer.wx, pointer.wy, pts[i - 1].x, pts[i - 1].y, p.x, p.y);
+          const near = pointSegDist2(pointer.wx, pointer.wy, pts[i - 1].x, pts[i - 1].y, p.x, p.y) < 22 * 22;
+          if (crossed || near) {
+            st.cooldown = 0.24;
+            st.energy = 1.0;
+            st.pluckedCount++;
+            state.stringsPlucked++;
+            mA.runeGlow = 1.0;
+            mB.runeGlow = 1.0;
+
+            const impX = clamp(pointer.vx * 0.032, -26, 26);
+            const impY = clamp(pointer.vy * 0.032, -32, 32) || -20;
+            p.x += impX;
+            p.y += impY;
+            if (i > 1) pts[i - 1].y += impY * 0.6;
+            if (i < last - 1) pts[i + 1].y += impY * 0.6;
+
+            sound.playGuzhengPluck(st.id);
+            notifyAgency('抚弦唤醒绝壁春花');
+
+            // 在两侧石碑催开荧光春花
+            const pickM = Math.random() < 0.5 ? mA : mB;
+            const edgeX = pickM.x + (Math.random() < 0.5 ? -pickM.w * 0.44 : pickM.w * 0.44);
+            const edgeY = clamp((ay + by) * 0.5 + (Math.random() - 0.5) * 150, pickM.topY + 35, 760);
+            spawnCliffBlossom(edgeX, edgeY, 0.85 + Math.random() * 0.45);
+
+            for (let k = 0; k < 10; k++) {
+              spawnParticle({
+                x: p.x, y: p.y,
+                vx: (Math.random() - 0.5) * 130,
+                vy: (Math.random() - 0.5) * 130 - 25,
+                size: 11 + Math.random() * 9,
+                life: 0.85 + Math.random() * 0.4,
+                maxLife: 1.25,
+                sprite: k % 3 === 0 ? 'rose' : 'cyan'
+              });
+            }
+          }
+        }
+      }
+
+      for (let iter = 0; iter < 4; iter++) {
+        pts[0].x = ax; pts[0].y = ay;
+        pts[last].x = bx; pts[last].y = by;
+        for (let i = 0; i < last; i++) {
+          const p1 = pts[i], p2 = pts[i + 1];
+          const dx = p2.x - p1.x, dy = p2.y - p1.y;
+          const d = Math.hypot(dx, dy) || 0.001;
+          const diff = (d - restLen) / d;
+          if (i === 0) {
+            p2.x -= dx * diff; p2.y -= dy * diff;
+          } else if (i + 1 === last) {
+            p1.x += dx * diff; p1.y += dy * diff;
+          } else {
+            p1.x += dx * diff * 0.5; p1.y += dy * diff * 0.5;
+            p2.x -= dx * diff * 0.5; p2.y -= dy * diff * 0.5;
+          }
+        }
+      }
+    }
+
+    // 绝壁春花生长动画
+    for (let i = 0; i < cliffBlossoms.length; i++) {
+      cliffBlossoms[i].grow = Math.min(1, cliffBlossoms[i].grow + dt * 1.45);
+    }
+
+    // 按住拖曳绘出流风丝带
+    if (pointer.down && pointer.inside && !pointer.overUI && pointer.speed > 65) {
+      let cur = windRibbons[windRibbons.length - 1];
+      if (!cur || !cur.active || cur.pts.length > 46) {
+        cur = { pts: [], life: 1.0, active: true };
+        windRibbons.push(cur);
+        state.windStrokesCount++;
+        notifyAgency('绘出长风托举孤帆');
+      }
+      const lastPt = cur.pts[cur.pts.length - 1];
+      if (!lastPt || dist2(lastPt.x, lastPt.y, pointer.wx, pointer.wy) > 14 * 14) {
+        cur.pts.push({ x: pointer.wx, y: pointer.wy });
+        sound.playWindBrush(clamp(pointer.speed / 1400, 0, 1));
+        boat.x += clamp(pointer.vx * dt * 0.06, -9, 14);
+        boat.y += clamp(pointer.vy * dt * 0.05, -12, 8);
+        if (Math.random() < 0.6) {
+          spawnParticle({
+            x: pointer.wx, y: pointer.wy,
+            vx: pointer.vx * 0.12 + (Math.random() - 0.5) * 30,
+            vy: pointer.vy * 0.12 + (Math.random() - 0.5) * 30,
+            size: 12,
+            life: 0.75,
+            maxLife: 0.75,
+            sprite: 'cyan'
+          });
+        }
+      }
+    } else if (windRibbons.length && windRibbons[windRibbons.length - 1].active) {
+      windRibbons[windRibbons.length - 1].active = false;
+    }
+
+    for (let i = windRibbons.length - 1; i >= 0; i--) {
+      const r = windRibbons[i];
+      if (!r.active) r.life -= dt * 0.48;
+      for (let k = 0; k < r.pts.length; k++) {
+        r.pts[k].x += 22 * dt;
+        r.pts[k].y -= 8 * dt;
+      }
+      if (r.life <= 0) windRibbons.splice(i, 1);
+    }
+
+    // 峡谷漂浮风雪微尘
+    if (Math.random() < 0.45) {
+      spawnParticle({
+        x: -60 + Math.random() * 2040,
+        y: 60 + Math.random() * 820,
+        vx: 45 + Math.random() * 55,
+        vy: -14 - Math.random() * 24,
+        size: 6 + Math.random() * 6,
+        life: 2.2,
+        maxLife: 2.2,
+        sprite: state.emeraldAmt > 0.25 ? 'cyan' : 'silver'
+      });
+    }
+  }
+
+  // 第三幕互动：撑起折光护盾击碎蚀影风雹 + 拖曳校准三道 3D 铜环
+  function updateTempestAct(dt, t) {
+    const cx = state.sunWX, cy = state.sunWY;
+
+    // 铜环旋转、拖拽与归位锁定
+    for (let i = 0; i < celestialRings.length; i++) {
+      const ring = celestialRings[i];
+      ring.hover = Math.max(0, ring.hover - dt * 4);
+      if (ring.locked) {
+        ring.angle = lerp(ring.angle, ring.targetAngle, 1 - Math.exp(-dt * 10));
+        ring.lockGlow = Math.min(1, ring.lockGlow + dt * 2.2);
+        continue;
+      }
+
+      if (pointer.dragRingIdx === i && pointer.down) {
+        const curAng = Math.atan2(pointer.wy - cy, pointer.wx - cx);
+        const dAng = angleDiff(pointer.dragPrevAng, curAng);
+        ring.angle += dAng * 1.15;
+        pointer.dragPrevAng = curAng;
+        ring.hover = 1;
+      } else {
+        // 未被按住时，检查光标是否掠过铜环上的宝石节点，轻扫亦可推动
+        const keyPt = projectRingPoint(ring, ring.angle, cx, cy);
+        const dKey = Math.hypot(pointer.wx - keyPt.x, pointer.wy - keyPt.y);
+        if (pointer.inside && !pointer.overUI && dKey < 58) {
+          ring.hover = 1;
+          if (pointer.speed > 80) {
+            const diffToTarget = angleDiff(ring.angle, ring.targetAngle);
+            ring.angVel += Math.sign(diffToTarget || 1) * 1.8 * dt;
+          }
+        }
+        ring.angle += (ring.driftSpeed * (1 - ring.hover * 0.7) + ring.angVel) * dt;
+        ring.angVel *= Math.pow(0.25, dt);
+      }
+
+      // 判断是否对准黄金缺口
+      if (Math.abs(angleDiff(ring.angle, ring.targetAngle)) < 0.20) {
+        ring.locked = true;
+        ring.angle = ring.targetAngle;
+        if (pointer.dragRingIdx === i) pointer.dragRingIdx = -1;
+        state.ringsAligned++;
+        state.lightningFlash = 0.55;
+        sound.playRingLock(i);
+        notifyAgency(`天晷铜环归位 (${state.ringsAligned}/3)`);
+
+        const lockPt = projectRingPoint(ring, ring.targetAngle, cx, cy);
+        for (let k = 0; k < 22; k++) {
+          const a = (k / 22) * TAU;
+          spawnParticle({
+            x: lockPt.x, y: lockPt.y,
+            vx: Math.cos(a) * (60 + Math.random() * 110),
+            vy: Math.sin(a) * (60 + Math.random() * 110),
+            size: 15,
+            life: 0.9,
+            maxLife: 0.9,
+            sprite: 'gold'
+          });
+        }
+      }
+    }
+
+    // 生成袭向木舟的蚀影风雹
+    const spawnChance = (0.048 - state.ringsAligned * 0.011) * (t < 104 ? 1 : 0.25);
+    if (shadowShards.length < 18 && Math.random() < spawnChance) {
+      const fromAng = -Math.PI * (0.12 + Math.random() * 0.76);
+      const sx = cx + Math.cos(fromAng) * (140 + Math.random() * 260);
+      const sy = cy + Math.sin(fromAng) * (90 + Math.random() * 140);
+      const aimX = boat.x + (Math.random() - 0.5) * 70;
+      const aimY = boat.y - 36;
+      const dx = aimX - sx, dy = aimY - sy;
+      const d = Math.hypot(dx, dy) || 1;
+      const spd = 250 + Math.random() * 145;
+      shadowShards.push({
+        x: sx, y: sy,
+        vx: (dx / d) * spd,
+        vy: (dy / d) * spd,
+        rot: Math.atan2(dy, dx),
+        len: 20 + Math.random() * 14
+      });
+      if (Math.random() < 0.22) state.lightningFlash = 0.42;
+    }
+
+    // 折光护盾角度：由木舟指向观众光标
+    const shieldCenterX = boat.x + 8;
+    const shieldCenterY = boat.y - 42;
+    const shieldAng = pointer.inside
+      ? Math.atan2(pointer.wy - shieldCenterY, pointer.wx - shieldCenterX)
+      : -Math.PI * 0.5;
+    const shieldActive = pointer.inside && !pointer.overUI;
+    const shieldR = 96;
+
+    for (let i = shadowShards.length - 1; i >= 0; i--) {
+      const sh = shadowShards[i];
+      sh.x += sh.vx * dt;
+      sh.y += sh.vy * dt;
+
+      let blocked = false;
+      if (shieldActive) {
+        // 判定 1：撞上舟前折光穹盾圆弧
+        const dBoat = Math.hypot(sh.x - shieldCenterX, sh.y - shieldCenterY);
+        const sAng = Math.atan2(sh.y - shieldCenterY, sh.x - shieldCenterX);
+        if (dBoat > shieldR - 24 && dBoat < shieldR + 24 && Math.abs(angleDiff(sAng, shieldAng)) < 0.85) {
+          blocked = true;
+        }
+        // 判定 2：光标直接挥击拦截风雹
+        if (!blocked && dist2(sh.x, sh.y, pointer.wx, pointer.wy) < 58 * 58) {
+          blocked = true;
+        }
+      }
+
+      if (blocked) {
+        state.shardsDeflected++;
+        sound.playShieldShatter();
+        notifyAgency('折光护盾击碎蚀影');
+        for (let k = 0; k < 10; k++) {
+          const a = Math.random() * TAU;
+          const sp = 55 + Math.random() * 130;
+          spawnParticle({
+            x: sh.x, y: sh.y,
+            vx: Math.cos(a) * sp,
+            vy: Math.sin(a) * sp,
+            size: 11 + Math.random() * 8,
+            life: 0.55 + Math.random() * 0.3,
+            maxLife: 0.85,
+            sprite: k % 2 === 0 ? 'gold' : 'cyan'
+          });
+        }
+        shadowShards.splice(i, 1);
+        continue;
+      }
+
+      // 命中木舟（静观模式下亦只震落外层浮火，绝不卡关）
+      if (dist2(sh.x, sh.y, shieldCenterX, shieldCenterY) < 34 * 34) {
+        boat.hitRecoil = 0.85;
+        state.shake = 7;
+        for (let k = 0; k < 7; k++) {
+          spawnParticle({
+            x: sh.x, y: sh.y,
+            vx: (Math.random() - 0.5) * 110,
+            vy: -20 - Math.random() * 80,
+            size: 10,
+            life: 0.5,
+            maxLife: 0.5,
+            sprite: 'warm'
+          });
+        }
+        shadowShards.splice(i, 1);
+        continue;
+      }
+
+      if (sh.y > 1150 || sh.x < -200 || sh.x > 2120) {
+        shadowShards.splice(i, 1);
+      }
+    }
+  }
+
+  // 第四幕互动：流金修补破碎太初日心 (金缮补天)
+  function updateKintsugiAct(dt, t) {
+    const cx = state.sunWX, cy = state.sunWY, r = state.sunRadius;
+
+    // 静观保底：小晷举起灯杖，微光缓缓注入中央主裂隙 (至 138s 约自动弥合 18%)
+    if (t >= 111 && t < 138) {
+      for (let i = 0; i < sunCracks.length; i++) {
+        const c = sunCracks[i];
+        if (c.isCore) {
+          c.mended = Math.min(1, c.mended + dt * 0.036);
+        }
+      }
+      if (Math.random() < 0.35) {
+        spawnParticle({
+          x: boat.x + 20 + (Math.random() - 0.5) * 14,
+          y: boat.y - 68,
+          vx: (cx - boat.x) * 0.35 + (Math.random() - 0.5) * 35,
+          vy: -150 - Math.random() * 70,
+          size: 11,
+          life: 1.3,
+          maxLife: 1.3,
+          sprite: 'gold'
+        });
+      }
+    }
+
+    // 观众拂过或按住日心裂痕：倾注流金快速熔接天裂
+    if (t < 138.5 && pointer.inside && !pointer.overUI) {
+      const brushR = pointer.down ? 62 : 44;
+      let weldedNow = false;
+      for (let i = 0; i < sunCracks.length; i++) {
+        const c = sunCracks[i];
+        if (c.mended >= 1) continue;
+        const ax = cx + c.x1 * r, ay = cy + c.y1 * r;
+        const bx = cx + c.x2 * r, by = cy + c.y2 * r;
+        const dSq = pointSegDist2(pointer.wx, pointer.wy, ax, ay, bx, by);
+        if (dSq < brushR * brushR) {
+          const rate = pointer.down ? 2.6 : (pointer.speed > 35 ? 1.85 : 0.9);
+          c.mended = Math.min(1, c.mended + dt * rate);
+          weldedNow = true;
+          if (Math.random() < 0.55) {
+            const mx = (ax + bx) * 0.5, my = (ay + by) * 0.5;
+            spawnParticle({
+              x: mx, y: my,
+              vx: (Math.random() - 0.5) * 75,
+              vy: (Math.random() - 0.5) * 75 - 15,
+              size: 12 + Math.random() * 8,
+              life: 0.7,
+              maxLife: 0.7,
+              sprite: 'gold'
+            });
+          }
+        }
+      }
+      if (weldedNow) {
+        sound.playKintsugiWeld(state.kintsugiRatio);
+        notifyAgency(`金缮修补日心 · ${Math.round(state.kintsugiRatio * 100)}%`);
+      }
+    }
+
+    let sum = 0;
+    for (let i = 0; i < sunCracks.length; i++) sum += sunCracks[i].mended;
+    state.kintsugiRatio = sunCracks.length ? sum / sunCracks.length : 0;
+  }
+
+  function triggerDawnClimax() {
+    state.dawnTriggered = true;
+    state.dawnShockwave = 10;
+    state.shake = 10;
+    const richness = clamp(state.warmthAmt * 0.6 + state.kintsugiRatio * 0.7, 0, 1);
+    sound.playDawnEruption(richness);
+
+    for (let k = 0; k < 65; k++) {
+      const a = (k / 65) * TAU + Math.random() * 0.08;
+      const sp = 120 + Math.random() * 340;
+      spawnParticle({
+        x: state.sunWX,
+        y: state.sunWY,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        size: 16 + Math.random() * 18,
+        life: 1.2 + Math.random() * 0.9,
+        maxLife: 2.1,
+        sprite: richness > 0.32 ? 'gold' : 'silver'
+      });
+    }
+
+    // 破晓后为港湾预生成首批飞舞白鹭与祈愿天灯
+    const birdCount = richness > 0.3 ? 9 : 3;
+    for (let i = 0; i < birdCount; i++) {
+      spawnCrane(180 + Math.random() * 1560, 220 + Math.random() * 320);
+    }
+    if (richness > 0.35 || state.emeraldAmt > 0.3) {
+      for (let i = 0; i < 10; i++) {
+        spawnSkyLantern(220 + Math.random() * 1480, 620 + Math.random() * 90, false);
+      }
+    }
+  }
+
+  // 第五幕互动：破晓港湾天灯升空与白鹭齐飞
+  function updateEpilogueAct(dt, _t) {
+    const rich = state.warmthAmt + state.emeraldAmt;
+    if (rich > 0.45 && Math.random() < 0.035) {
+      spawnSkyLantern(180 + Math.random() * 1560, 650 + Math.random() * 50, false);
+    }
+    if (Math.random() < 0.015) {
+      spawnCrane(Math.random() < 0.5 ? -40 : 1960, 180 + Math.random() * 300);
+    }
+
+    for (let i = skyLanterns.length - 1; i >= 0; i--) {
+      const l = skyLanterns[i];
+      l.phase += dt * 1.8;
+      l.x += (l.vx + Math.sin(l.phase) * 12) * dt;
+      l.y += l.vy * dt;
+      l.alpha = Math.min(1, l.alpha + dt * 1.2);
+      if (l.y < -80) skyLanterns.splice(i, 1);
+    }
+
+    for (let i = cranes.length - 1; i >= 0; i--) {
+      const c = cranes[i];
+      c.flap += dt * 7.2;
+      c.x += c.vx * dt;
+      c.y += (c.vy + Math.sin(c.flap * 0.5) * 8) * dt;
+      if (c.x < -160 || c.x > 2080 || c.y < -90) cranes.splice(i, 1);
+    }
+  }
+
+  function updateParticlesAndRipples(dt, amb) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.life -= dt;
+      if (p.life <= 0) {
+        particles[i] = particles[particles.length - 1];
+        particles.pop();
+        continue;
+      }
+      if (p.gy) p.vy += p.gy * dt;
+      p.x += (p.vx + Math.sin(amb * 2 + i) * 4) * dt;
+      p.y += p.vy * dt;
+    }
+
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const r = ripples[i];
+      r.life -= dt * 0.72;
+      r.r = lerp(r.maxR, 6, r.life * r.life);
+      if (r.life <= 0) ripples.splice(i, 1);
+    }
+
+    for (let i = 0; i < boat.orbitEmbers.length; i++) {
+      boat.orbitEmbers[i].ang += boat.orbitEmbers[i].speed * dt;
+    }
+  }
+
+  // =========================================================================
+  // 7. 高清 2D 银幕画卷渲染管线 (千檐港、风碑、天晷、金缮日心、小晷与倒影)
+  // =========================================================================
+  function renderScene() {
+    const w = view.w, h = view.h;
+    ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.save();
+    const sx = state.shake > 0.1 ? (Math.random() - 0.5) * state.shake : 0;
+    const sy = state.shake > 0.1 ? (Math.random() - 0.5) * state.shake : 0;
+    ctx.translate(w * 0.5 + sx, h * 0.5 + sy);
+    ctx.scale(view.scale, view.scale);
+    ctx.translate(-960, -540);
+
+    const t = state.filmTime;
+
+    // 远景天体核心：第三幕蚀日、第四幕金缮日心、第五幕破晓新日
+    renderCelestialCore(t);
+
+    // 第二幕：风碑长峡、悬弦与绝壁春花 (含入场与退场平滑透明度)
+    if (state.started && t >= 30 && t < 75) {
+      const alpha = smoothstep(30, 35, t) * (1 - smoothstep(68, 74, t));
+      renderCanyonLayer(alpha);
+    }
+
+    // 第一幕与第五幕：千檐港高脚楼建筑群与水中倒影
+    if (!state.started || t < 37 || t >= 141) {
+      const alpha = !state.started
+        ? 1
+        : (t < 37 ? 1 - smoothstep(32, 36.5, t) : smoothstep(141, 146, t));
+      renderHarborLayer(alpha, t);
+    }
+
+    // 第三幕：前景铜环半弧与蚀影风雹、折光护盾
+    if (state.started && t >= 67 && t < 112) {
+      const alpha = smoothstep(67, 72, t) * (1 - smoothstep(106, 111.5, t));
+      renderTempestFront(alpha);
+    }
+
+    // 第五幕：祈愿天灯与白鹭群
+    if (state.started && t >= 139) {
+      renderCranesAndLanterns(smoothstep(139, 144, t));
+    }
+
+    // 水面涟漪与水下沉昼碎金
+    renderWaterDetails(t);
+
+    // 主角小晷、木舟与水面镜像倒影
+    if (state.seaWorldY < 980) {
+      renderBoatReflection();
+    }
+    renderBoatAndXiaoGui(t);
+
+    // 全局发光粒子与破晓冲击波光环
+    renderParticlesAndShockwave();
+
+    // 自定义星盘折光游标
+    if (pointer.inside && !pointer.overUI && state.started) {
+      renderCustomCursor();
+    }
+
+    ctx.restore();
+  }
+
+  function renderCelestialCore(t) {
+    const cx = state.sunWX, cy = state.sunWY, r = state.sunRadius;
+    const inTempest = state.started && t >= 67 && t < 112;
+    const tempAlpha = inTempest ? smoothstep(67, 72, t) * (1 - smoothstep(106, 111.5, t)) : 0;
+
+    // 第三幕与第五幕（若守火校晷结局）：后景半圈 3D 铜环
+    if (tempAlpha > 0.01) {
+      for (let i = celestialRings.length - 1; i >= 0; i--) {
+        drawArmillaryHalf(celestialRings[i], cx, cy, 1, false, tempAlpha);
+      }
+    } else if (t >= 142 && state.ringsAligned > 0) {
+      const crownA = smoothstep(142, 148, t) * (0.28 + state.ringsAligned * 0.14);
+      for (let i = celestialRings.length - 1; i >= 0; i--) {
+        if (celestialRings[i].locked) {
+          drawArmillaryHalf(celestialRings[i], cx, cy, 0.72, false, crownA);
+        }
+      }
+    }
+
+    // 绘制日体本身
+    ctx.save();
+    if (!state.started || t < 68) {
+      // 第一、二幕：清冷残缺古月日轮
+      drawGlow(ctx, SPRITES.silver, cx, cy, r * 2.2, 0.35);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.56, 0, TAU);
+      ctx.fillStyle = 'rgba(218, 230, 248, 0.22)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(232, 240, 255, 0.42)';
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    } else if (t < 138) {
+      // 第三、四幕：蚀日黑曜瓷核 + 金缮熔金裂痕
+      const mend = state.kintsugiRatio;
+      drawGlow(ctx, mend > 0.2 ? SPRITES.gold : SPRITES.silver, cx, cy, r * (1.75 + mend * 1.1), 0.38 + mend * 0.5);
+
+      // 裂隙透射出的金色佛光束
+      if (t >= 106 && mend > 0.03) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 14; i++) {
+          const ang = (i / 14) * TAU + state.ambientTime * 0.06;
+          const rayLen = r * (1.35 + mend * 1.9 * (0.6 + 0.4 * Math.sin(i * 3.1 + state.ambientTime)));
+          const grad = ctx.createLinearGradient(cx, cy, cx + Math.cos(ang) * rayLen, cy + Math.sin(ang) * rayLen);
+          grad.addColorStop(0, `rgba(255, 224, 142, ${0.28 * mend})`);
+          grad.addColorStop(1, 'rgba(255, 190, 90, 0)');
+          ctx.strokeStyle = grad;
+          ctx.lineWidth = 8 + mend * 18;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(cx + Math.cos(ang) * rayLen, cy + Math.sin(ang) * rayLen);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // 暗色残损日核圆盘
+      const coreGrad = ctx.createRadialGradient(cx - r * 0.2, cy - r * 0.2, r * 0.08, cx, cy, r);
+      coreGrad.addColorStop(0, '#182030');
+      coreGrad.addColorStop(0.78, '#0c101b');
+      coreGrad.addColorStop(1, '#25324a');
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, TAU);
+      ctx.fillStyle = coreGrad;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = `rgba(248, 220, 158, ${0.35 + mend * 0.55})`;
+      ctx.stroke();
+
+      // 第四幕绘制可修补的瓷裂星脉
+      if (t >= 104) {
+        const crackAlpha = smoothstep(104, 110, t);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, r - 1, 0, TAU);
+        ctx.clip();
+
+        for (let i = 0; i < sunCracks.length; i++) {
+          const c = sunCracks[i];
+          const x1 = cx + c.x1 * r, y1 = cy + c.y1 * r;
+          const x2 = cx + c.x2 * r, y2 = cy + c.y2 * r;
+
+          // 未修补的暗银裂纹呼吸提示
+          const pulse = 0.32 + 0.18 * Math.sin(state.ambientTime * 2.8 + c.order);
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.strokeStyle = `rgba(175, 198, 232, ${pulse * crackAlpha})`;
+          ctx.lineWidth = 2.2;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+
+          // 已注入的金缮熔金脉络
+          if (c.mended > 0.01) {
+            const mx = lerp(x1, x2, c.mended);
+            const my = lerp(y1, y2, c.mended);
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(mx, my);
+            ctx.strokeStyle = `rgba(255, 224, 132, ${0.95 * crackAlpha})`;
+            ctx.lineWidth = 3.2 + c.mended * 2.4;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(mx, my);
+            ctx.strokeStyle = `rgba(255, 252, 235, ${0.88 * crackAlpha})`;
+            ctx.lineWidth = 1.4;
+            ctx.stroke();
+
+            drawGlow(ctx, SPRITES.gold, mx, my, 18 * c.mended, 0.42 * crackAlpha);
+          }
+        }
+        ctx.restore();
+
+        // 光标靠近裂痕时绘制倾注而入的流金丝弧
+        if (pointer.inside && !pointer.overUI && t < 138) {
+          const dCur = Math.hypot(pointer.wx - cx, pointer.wy - cy);
+          if (dCur < r * 1.45) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.beginPath();
+            const midX = (pointer.wx + cx) * 0.5 + Math.sin(state.ambientTime * 5) * 14;
+            const midY = (pointer.wy + cy) * 0.5 - 18;
+            ctx.moveTo(pointer.wx, pointer.wy);
+            ctx.quadraticCurveTo(midX, midY, lerp(pointer.wx, cx, 0.42), lerp(pointer.wy, cy, 0.42));
+            ctx.strokeStyle = pointer.down ? 'rgba(255, 232, 148, 0.78)' : 'rgba(255, 218, 130, 0.42)';
+            ctx.lineWidth = pointer.down ? 2.8 : 1.6;
+            ctx.stroke();
+            ctx.restore();
+          }
+        }
+      }
+    } else {
+      // 138s 破晓之后：圆满重铸的新生旭日（保留淡淡金缮纹理印记）
+      const rich = clamp(state.warmthAmt * 0.6 + state.kintsugiRatio * 0.7, 0, 1);
+      drawGlow(ctx, rich > 0.3 ? SPRITES.gold : SPRITES.silver, cx, cy, r * 3.4, 0.85);
+      const sunG = ctx.createRadialGradient(cx, cy, r * 0.1, cx, cy, r);
+      if (rich > 0.3) {
+        sunG.addColorStop(0, '#fffdf5');
+        sunG.addColorStop(0.65, '#ffe39e');
+        sunG.addColorStop(1, 'rgba(255, 182, 92, 0.88)');
+      } else {
+        sunG.addColorStop(0, '#ffffff');
+        sunG.addColorStop(0.7, '#dce8f8');
+        sunG.addColorStop(1, 'rgba(170, 198, 235, 0.82)');
+      }
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.82, 0, TAU);
+      ctx.fillStyle = sunG;
+      ctx.fill();
+
+      // 日面金缮纪念金丝
+      ctx.save();
+      ctx.globalAlpha = 0.42;
+      for (let i = 0; i < sunCracks.length; i++) {
+        const c = sunCracks[i];
+        if (c.mended < 0.2) continue;
+        ctx.beginPath();
+        ctx.moveTo(cx + c.x1 * r * 0.8, cy + c.y1 * r * 0.8);
+        ctx.lineTo(cx + c.x2 * r * 0.8, cy + c.y2 * r * 0.8);
+        ctx.strokeStyle = rich > 0.3 ? '#fff9e2' : '#eef5ff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // 第五幕前景天晷金冠半弧
+    if (t >= 142 && state.ringsAligned > 0 && tempAlpha <= 0.01) {
+      const crownA = smoothstep(142, 148, t) * (0.28 + state.ringsAligned * 0.14);
+      for (let i = 0; i < celestialRings.length; i++) {
+        if (celestialRings[i].locked) {
+          drawArmillaryHalf(celestialRings[i], cx, cy, 0.72, true, crownA);
+        }
+      }
+    }
+  }
+
+  function drawArmillaryHalf(ring, cx, cy, scale, frontHalf, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const steps = 64;
+    ctx.beginPath();
+    let penDown = false;
+    for (let s = 0; s <= steps; s++) {
+      const th = (s / steps) * TAU;
+      const pt = projectRingPoint(ring, th, cx, cy, scale);
+      const isFront = pt.z >= 0;
+      if (isFront === frontHalf) {
+        if (!penDown) {
+          ctx.moveTo(pt.x, pt.y);
+          penDown = true;
+        } else {
+          ctx.lineTo(pt.x, pt.y);
+        }
+      } else {
+        penDown = false;
+      }
+    }
+
+    const strokeCol = ring.locked
+      ? 'rgba(255, 224, 140, 0.92)'
+      : (ring.hover > 0.1 ? 'rgba(248, 214, 138, 0.85)' : 'rgba(196, 168, 116, 0.58)');
+    ctx.strokeStyle = strokeCol;
+    ctx.lineWidth = (ring.locked ? 4.2 : 3.0) * scale;
+    ctx.stroke();
+
+    // 铜环十二辰刻度文字与对准机关（仅在前景或对应半区绘制）
+    for (let g = 0; g < 12; g++) {
+      const th = ring.angle + (g / 12) * TAU;
+      const pt = projectRingPoint(ring, th, cx, cy, scale);
+      if ((pt.z >= 0) !== frontHalf) continue;
+      if (scale > 0.85 && g % 2 === 0) {
+        ctx.font = '12px "Songti SC", "STSong", serif';
+        ctx.fillStyle = ring.locked ? 'rgba(255, 236, 182, 0.88)' : 'rgba(214, 192, 150, 0.55)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(STEMS[g], pt.x, pt.y - 10);
+      }
+    }
+
+    // 目标黄金缺口 ◇
+    const targetPt = projectRingPoint(ring, ring.targetAngle, cx, cy, scale);
+    if ((targetPt.z >= 0) === frontHalf && scale > 0.85) {
+      drawGlow(ctx, SPRITES.gold, targetPt.x, targetPt.y, ring.locked ? 34 : 22, ring.locked ? 0.8 : 0.45);
+      ctx.save();
+      ctx.translate(targetPt.x, targetPt.y);
+      ctx.rotate(Math.PI * 0.25);
+      ctx.strokeStyle = '#ffeab8';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-8, -8, 16, 16);
+      ctx.restore();
+
+      if (ring.locked) {
+        ctx.beginPath();
+        ctx.moveTo(targetPt.x, targetPt.y);
+        ctx.lineTo(cx, cy);
+        ctx.strokeStyle = 'rgba(255, 230, 156, 0.35)';
+        ctx.lineWidth = 2.2;
+        ctx.stroke();
+      }
+    }
+
+    // 可拖动的铜环指针宝石 ◆
+    if (!ring.locked && scale > 0.85) {
+      const keyPt = projectRingPoint(ring, ring.angle, cx, cy, scale);
+      if ((keyPt.z >= 0) === frontHalf) {
+        drawGlow(ctx, SPRITES.warm, keyPt.x, keyPt.y, 26 + ring.hover * 10, 0.75);
+        ctx.save();
+        ctx.translate(keyPt.x, keyPt.y);
+        ctx.rotate(Math.PI * 0.25);
+        ctx.fillStyle = '#ffd984';
+        ctx.fillRect(-6.5, -6.5, 13, 13);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
+  function renderTempestFront(alpha) {
+    const cx = state.sunWX, cy = state.sunWY;
+    for (let i = 0; i < celestialRings.length; i++) {
+      drawArmillaryHalf(celestialRings[i], cx, cy, 1, true, alpha);
+    }
+
+    // 绘制袭来的蚀影风雹
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    for (let i = 0; i < shadowShards.length; i++) {
+      const sh = shadowShards[i];
+      ctx.save();
+      ctx.translate(sh.x, sh.y);
+      ctx.rotate(sh.rot);
+      const g = ctx.createLinearGradient(-sh.len, 0, sh.len * 0.6, 0);
+      g.addColorStop(0, 'rgba(30, 38, 65, 0)');
+      g.addColorStop(0.65, 'rgba(130, 165, 225, 0.75)');
+      g.addColorStop(1, '#eef6ff');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(sh.len * 0.65, 0);
+      ctx.lineTo(-sh.len * 0.4, -4.5);
+      ctx.lineTo(-sh.len, 0);
+      ctx.lineTo(-sh.len * 0.4, 4.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // 绘制舟前折光护盾圆弧
+    if (pointer.inside && !pointer.overUI) {
+      const scx = boat.x + 8, scy = boat.y - 42;
+      const ang = Math.atan2(pointer.wy - scy, pointer.wx - scx);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.beginPath();
+      ctx.arc(scx, scy, 96, ang - 0.78, ang + 0.78);
+      ctx.strokeStyle = 'rgba(255, 228, 152, 0.72)';
+      ctx.lineWidth = 4.2;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(scx, scy, 102, ang - 0.62, ang + 0.62);
+      ctx.strokeStyle = 'rgba(132, 236, 226, 0.48)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function renderHarborLayer(alpha, t) {
+    const isAct5 = state.started && t >= 141;
+    const camShift = (!state.started) ? 0 : (t < 37 ? lerp(0, -240, clamp(t / 34, 0, 1)) : -110);
+    const seaY = state.seaWorldY;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // 水下残存古拱门暗影 (第一幕体现“沉没的旧白昼城池”)
+    if (!isAct5) {
+      ctx.fillStyle = 'rgba(8, 17, 34, 0.42)';
+      for (let i = 0; i < 6; i++) {
+        const ax = 210 + i * 290 + camShift * 0.55;
+        const ay = seaY + 26;
+        ctx.beginPath();
+        ctx.rect(ax - 36, ay, 14, 130);
+        ctx.rect(ax + 22, ay, 14, 130);
+        ctx.fill();
+      }
+    }
+
+    for (let i = 0; i < harborHouses.length; i++) {
+      const h = harborHouses[i];
+      const hx = h.bx + camShift * h.depth;
+      if (hx < -450 || hx > 2380) continue;
+
+      const bodyBottom = seaY - h.stiltH + (h.depth - 0.6) * 16;
+      const bodyTop = bodyBottom - h.h;
+
+      // 建筑剪影色随远近景深与破晓光感自然过渡
+      const shade = Math.round(lerp(10, 26, 1 - h.depth) + state.dawnAmt * 18);
+      const silhouette = `rgb(${shade}, ${shade + 5}, ${shade + 15})`;
+
+      // 木桩高脚
+      ctx.strokeStyle = silhouette;
+      ctx.lineWidth = Math.max(2, 3.2 * h.scale);
+      const legs = [-0.38, 0, 0.38];
+      for (let l = 0; l < legs.length; l++) {
+        const lx = hx + legs[l] * h.w;
+        ctx.beginPath();
+        ctx.moveTo(lx, bodyBottom - 2);
+        ctx.lineTo(lx, seaY + 14);
+        ctx.stroke();
+      }
+
+      // 楼阁主体与飞檐翘角
+      ctx.fillStyle = silhouette;
+      ctx.fillRect(hx - h.w * 0.5, bodyTop, h.w, h.h);
+
+      drawCurvedRoof(ctx, hx, bodyTop, h.w + h.roofOverhang * 2, 20 * h.scale, silhouette, state.dawnAmt);
+      if (h.tiers === 2) {
+        const midY = bodyTop + h.h * 0.48;
+        drawCurvedRoof(ctx, hx, midY, h.w + h.roofOverhang * 1.6, 15 * h.scale, silhouette, state.dawnAmt);
+      }
+
+      // 窗棂与暖色灯火 + 水中窗影
+      for (let w = 0; w < h.wins.length; w++) {
+        const win = h.wins[w];
+        const wx = hx + win.rx * h.w * 0.78;
+        const wy = bodyTop + win.ry * h.h;
+        if (win.lit > 0.04) {
+          ctx.fillStyle = `rgba(255, 214, 132, ${0.88 * win.lit})`;
+          ctx.fillRect(wx - win.w * 0.5, wy - win.h * 0.5, win.w, win.h);
+          drawGlow(ctx, SPRITES.warm, wx, wy, 22 * h.scale, 0.45 * win.lit);
+
+          // 镜海倒影中的摇曳窗火
+          const reflY = seaY + (seaY - wy) * 0.52;
+          if (reflY < 1090) {
+            const waveX = Math.sin(state.ambientTime * 3.1 + wx * 0.05) * 5;
+            drawGlow(ctx, SPRITES.warm, wx + waveX, reflY, 18 * h.scale, 0.24 * win.lit);
+          }
+        } else {
+          ctx.fillStyle = 'rgba(130, 156, 196, 0.12)';
+          ctx.fillRect(wx - win.w * 0.5, wy - win.h * 0.5, win.w, win.h);
+        }
+      }
+
+      // 若第二幕唤醒过绝壁生春，第五幕归港时屋檐旁亦绽放春花枝条
+      if (isAct5 && state.emeraldAmt > 0.22 && h.bloomSeed > 0.42) {
+        drawGlow(ctx, h.bloomSeed > 0.7 ? SPRITES.rose : SPRITES.cyan, hx + h.w * 0.48, bodyTop + 12, 26 * h.scale, 0.55);
+      }
+    }
+
+    // 启航长栈桥（第一幕左岸）
+    if (!isAct5) {
+      const pierX = 395 + camShift * 0.92;
+      ctx.fillStyle = '#0a0f1c';
+      ctx.fillRect(pierX - 420, seaY - 18, 430, 8);
+      for (let p = 0; p < 7; p++) {
+        ctx.fillRect(pierX - p * 64, seaY - 18, 5, 34);
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function drawCurvedRoof(ctx, cx, bottomY, totalW, roofH, color, dawnRim) {
+    const hw = totalW * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - hw, bottomY + 3);
+    ctx.quadraticCurveTo(cx - hw * 0.45, bottomY - roofH * 0.35, cx, bottomY - roofH);
+    ctx.quadraticCurveTo(cx + hw * 0.45, bottomY - roofH * 0.35, cx + hw, bottomY + 3);
+    ctx.lineTo(cx - hw, bottomY + 3);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+
+    if (dawnRim > 0.15) {
+      ctx.beginPath();
+      ctx.moveTo(cx, bottomY - roofH);
+      ctx.quadraticCurveTo(cx + hw * 0.45, bottomY - roofH * 0.35, cx + hw, bottomY + 3);
+      ctx.strokeStyle = `rgba(255, 212, 138, ${0.42 * dawnRim})`;
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    }
+  }
+
+  function renderCanyonLayer(alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // 耸立石碑与发光古铭文
+    for (let i = 0; i < monoliths.length; i++) {
+      const m = monoliths[i];
+      const grad = ctx.createLinearGradient(m.x - m.w * 0.5, m.topY, m.x + m.w * 0.5, 980);
+      grad.addColorStop(0, m.depth > 0.8 ? '#0d1424' : '#131e33');
+      grad.addColorStop(1, '#070b14');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(m.x - m.w * 0.52, 1080);
+      ctx.lineTo(m.x - m.w * 0.44, m.topY + 28);
+      ctx.lineTo(m.x + m.notchOffset, m.topY);
+      ctx.lineTo(m.x + m.w * 0.44, m.topY + 34);
+      ctx.lineTo(m.x + m.w * 0.52, 1080);
+      ctx.closePath();
+      ctx.fill();
+
+      // 碑身几何符文
+      const glow = 0.14 + m.runeGlow * 0.78;
+      ctx.strokeStyle = `rgba(116, 235, 216, ${glow})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(m.x, m.topY + 55);
+      ctx.lineTo(m.x, m.topY + 290);
+      ctx.stroke();
+      for (let r = 0; r < 4; r++) {
+        const ry = m.topY + 90 + r * 52;
+        ctx.strokeRect(m.x - 9, ry - 9, 18, 18);
+      }
+      if (m.runeGlow > 0.05) {
+        drawGlow(ctx, SPRITES.cyan, m.x, m.topY + 170, 58, m.runeGlow * 0.36);
+      }
+    }
+
+    // 绝壁绽放的荧光花枝
+    for (let i = 0; i < cliffBlossoms.length; i++) {
+      const b = cliffBlossoms[i];
+      for (let k = 0; k < b.branches.length; k++) {
+        const br = b.branches[k];
+        const len = br.len * b.grow;
+        const ex = b.x + Math.cos(br.ang) * len;
+        const ey = b.y + Math.sin(br.ang) * len;
+        const cx = (b.x + ex) * 0.5 - Math.sin(br.ang) * len * br.curve;
+        const cy = (b.y + ey) * 0.5 + Math.cos(br.ang) * len * br.curve;
+        ctx.beginPath();
+        ctx.moveTo(b.x, b.y);
+        ctx.quadraticCurveTo(cx, cy, ex, ey);
+        ctx.strokeStyle = 'rgba(156, 224, 198, 0.72)';
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+
+        drawGlow(ctx, br.hue === 'rose' ? SPRITES.rose : SPRITES.cyan, ex, ey, 16 * b.grow, 0.78);
+      }
+    }
+
+    // 10 根可拨奏古铜丝弦与风铎
+    for (let s = 0; s < canyonStrings.length; s++) {
+      const st = canyonStrings[s];
+      const pts = st.pts;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
+      }
+      ctx.strokeStyle = st.energy > 0.05
+        ? `rgba(255, 232, 162, ${0.55 + st.energy * 0.45})`
+        : 'rgba(186, 206, 228, 0.42)';
+      ctx.lineWidth = 1.5 + st.energy * 2.0;
+      ctx.stroke();
+
+      // 弦心悬挂古铜风铃
+      const mid = pts[Math.floor(pts.length * 0.5)];
+      ctx.fillStyle = st.energy > 0.1 ? '#ffe59e' : '#8ea2bc';
+      ctx.beginPath();
+      ctx.moveTo(mid.x, mid.y);
+      ctx.lineTo(mid.x - 5, mid.y + 13);
+      ctx.lineTo(mid.x + 5, mid.y + 13);
+      ctx.closePath();
+      ctx.fill();
+      if (st.energy > 0.08) {
+        drawGlow(ctx, SPRITES.gold, mid.x, mid.y + 6, 28, st.energy * 0.65);
+      }
+    }
+
+    // 观众手绘的流风丝带
+    for (let i = 0; i < windRibbons.length; i++) {
+      const r = windRibbons[i];
+      if (r.pts.length < 2) continue;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let k = 1; k < r.pts.length; k++) {
+        const taper = Math.sin((k / r.pts.length) * Math.PI);
+        ctx.beginPath();
+        ctx.moveTo(r.pts[k - 1].x, r.pts[k - 1].y);
+        ctx.lineTo(r.pts[k].x, r.pts[k].y);
+        ctx.strokeStyle = `rgba(148, 245, 230, ${0.58 * r.life * taper})`;
+        ctx.lineWidth = 1.5 + taper * 6.5;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  function renderWaterDetails(t) {
+    // 水面椭圆涟漪
+    for (let i = 0; i < ripples.length; i++) {
+      const rp = ripples[i];
+      ctx.beginPath();
+      ctx.ellipse(rp.x, rp.y, rp.r, rp.r * 0.24, 0, 0, TAU);
+      const col = rp.hue === 'gold' ? '255, 222, 145' : '185, 212, 245';
+      ctx.strokeStyle = `rgba(${col}, ${rp.alpha * rp.life})`;
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+    }
+
+    // 第一幕水下与腾空中的沉昼碎金
+    if (state.started && t < 35) {
+      for (let i = 0; i < sunkenEmbers.length; i++) {
+        const e = sunkenEmbers[i];
+        if (e.state === 'captured' || e.x < -120 || e.x > 2040) continue;
+        const pulse = 0.72 + 0.28 * Math.sin(e.phase * 2);
+        if (e.state === 'sunken') {
+          // 水下竖直微光折射柱
+          const beamG = ctx.createLinearGradient(e.x, state.seaWorldY, e.x, e.y);
+          beamG.addColorStop(0, 'rgba(255, 214, 125, 0.22)');
+          beamG.addColorStop(1, 'rgba(255, 214, 125, 0.02)');
+          ctx.strokeStyle = beamG;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(e.x, state.seaWorldY + 2);
+          ctx.lineTo(e.x, e.y);
+          ctx.stroke();
+          drawGlow(ctx, SPRITES.gold, e.x, e.y, 28 * pulse, 0.68);
+        } else {
+          drawGlow(ctx, SPRITES.gold, e.x, e.y, 34, 0.95);
+        }
+
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.rotate(Math.PI * 0.25 + Math.sin(e.phase) * 0.2);
+        ctx.fillStyle = '#fff6da';
+        ctx.fillRect(-4.5, -4.5, 9, 9);
+        ctx.restore();
+      }
+    }
+  }
+
+  function renderBoatReflection() {
+    const seaY = state.seaWorldY;
+    if (boat.y > seaY + 35) return;
+    const distAbove = Math.max(0, seaY - boat.y);
+    const reflAlpha = clamp(1 - distAbove / 180, 0, 1) * 0.42;
+    if (reflAlpha <= 0.02) return;
+
+    ctx.save();
+    ctx.translate(boat.x, seaY * 2 - boat.y + 6);
+    ctx.scale(1, -0.68);
+    ctx.globalAlpha = reflAlpha;
+
+    drawGlow(ctx, SPRITES.gold, 22, -52, 68 * boat.lanternPower, 0.65);
+    ctx.beginPath();
+    ctx.moveTo(-54, 0);
+    ctx.quadraticCurveTo(0, 18, 58, -6);
+    ctx.quadraticCurveTo(10, 6, -54, 0);
+    ctx.fillStyle = '#090e1a';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function renderBoatAndXiaoGui(t) {
+    // 先在世界坐标画柔体风幡与斗篷飘带，保证物理位置严丝合缝
+    if (boat.sailNodes.length > 1) {
+      ctx.beginPath();
+      ctx.moveTo(boat.x - 4, boat.y - 76);
+      for (let i = 1; i < boat.sailNodes.length; i++) {
+        ctx.lineTo(boat.sailNodes[i].x, boat.sailNodes[i].y);
+      }
+      ctx.lineTo(boat.x - 4, boat.y - 26);
+      ctx.closePath();
+      ctx.fillStyle = state.dawnAmt > 0.5 ? 'rgba(248, 232, 202, 0.78)' : 'rgba(182, 198, 224, 0.52)';
+      ctx.fill();
+    }
+
+    if (boat.cloakNodes.length > 1) {
+      ctx.beginPath();
+      ctx.moveTo(boat.cloakNodes[0].x, boat.cloakNodes[0].y);
+      for (let i = 1; i < boat.cloakNodes.length; i++) {
+        ctx.lineTo(boat.cloakNodes[i].x, boat.cloakNodes[i].y);
+      }
+      ctx.strokeStyle = '#1b2740';
+      ctx.lineWidth = 7;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+
+    ctx.save();
+    ctx.translate(boat.x, boat.y);
+    ctx.rotate(boat.tilt);
+
+    // 桅杆
+    ctx.strokeStyle = '#241b16';
+    ctx.lineWidth = 2.6;
+    ctx.beginPath();
+    ctx.moveTo(-4, -2);
+    ctx.lineTo(-4, -80);
+    ctx.stroke();
+
+    // 弯月木舟船身与黄铜舟首饰
+    ctx.beginPath();
+    ctx.moveTo(-58, -7);
+    ctx.quadraticCurveTo(-12, 14, 62, -12);
+    ctx.quadraticCurveTo(46, 7, 0, 10);
+    ctx.quadraticCurveTo(-42, 9, -58, -7);
+    ctx.closePath();
+    ctx.fillStyle = '#121520';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(243, 207, 138, 0.38)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // 小晷人物剪影与分幕微表演（划桨 / 迎风 / 护火 / 高举灯杖 / 归港长揖）
+    const isRaisingStaff = state.started && t >= 110 && t < 139;
+    const bow = boat.bowAmount; // 0..1 归港致谢揖礼
+    ctx.save();
+    ctx.translate(14, -4);
+    ctx.rotate(-bow * 0.46 + (state.actIdx === 2 ? 0.14 : 0));
+
+    // 身躯斗篷
+    ctx.fillStyle = '#0d1322';
+    ctx.beginPath();
+    ctx.moveTo(-10, 2);
+    ctx.lineTo(-6, -28);
+    ctx.lineTo(7, -28);
+    ctx.lineTo(11, 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // 斗笠与微昂头部
+    ctx.beginPath();
+    ctx.arc(1, -34, 5.5, 0, TAU);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-13, -34);
+    ctx.quadraticCurveTo(1, -44, 15, -33);
+    ctx.closePath();
+    ctx.fillStyle = '#1a2438';
+    ctx.fill();
+
+    // 归港作揖双手合抱姿态
+    if (bow > 0.12) {
+      ctx.strokeStyle = '#182338';
+      ctx.lineWidth = 3.5;
+      ctx.beginPath();
+      ctx.moveTo(2, -23);
+      ctx.lineTo(-12, -20);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 第一幕长木桨划水动画
+    if (!state.started || t < 35) {
+      const oarAng = Math.sin(boat.oarPhase) * 0.42;
+      ctx.save();
+      ctx.translate(8, -14);
+      ctx.rotate(oarAng);
+      ctx.strokeStyle = '#3b2e24';
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(8, -8);
+      ctx.lineTo(-26, 26);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // 船头黄铜灯杖与桅灯昼火
+    const lx = isRaisingStaff ? 20 : 38;
+    const ly = isRaisingStaff ? -68 : -46;
+    ctx.strokeStyle = '#8b6f43';
+    ctx.lineWidth = 2.1;
+    ctx.beginPath();
+    ctx.moveTo(22, -4);
+    ctx.lineTo(lx, ly);
+    ctx.stroke();
+
+    const glowR = 54 * boat.lanternPower;
+    drawGlow(ctx, SPRITES.gold, lx, ly, glowR, 0.88);
+    drawGlow(ctx, SPRITES.warm, lx, ly, glowR * 1.9, 0.36);
+
+    ctx.fillStyle = '#fff9e6';
+    ctx.beginPath();
+    ctx.arc(lx, ly, 4.2 + Math.min(4, state.embersGathered * 0.35), 0, TAU);
+    ctx.fill();
+
+    // 环绕桅灯旋转的已收集昼火微星
+    if (!isRaisingStaff || t < 136) {
+      for (let i = 0; i < boat.orbitEmbers.length; i++) {
+        const ob = boat.orbitEmbers[i];
+        const ox = lx + Math.cos(ob.ang) * ob.orbitR;
+        const oy = ly + Math.sin(ob.ang) * ob.orbitR * 0.45 + ob.yOff * 0.3;
+        drawGlow(ctx, SPRITES.gold, ox, oy, 9, 0.8);
+      }
+    }
+
+    ctx.restore();
+  }
+
+  function renderCranesAndLanterns(alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // 祈愿天灯及其海面倒影
+    for (let i = 0; i < skyLanterns.length; i++) {
+      const l = skyLanterns[i];
+      const s = l.size;
+      drawGlow(ctx, SPRITES.warm, l.x, l.y, s * 2.8, 0.65 * l.alpha);
+      ctx.fillStyle = `rgba(255, 224, 152, ${0.92 * l.alpha})`;
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(l.x - s * 0.38, l.y - s * 0.5, s * 0.76, s, 3);
+      } else {
+        ctx.rect(l.x - s * 0.38, l.y - s * 0.5, s * 0.76, s);
+      }
+      ctx.fill();
+
+      if (l.y < state.seaWorldY && state.seaWorldY < 900) {
+        const ry = state.seaWorldY + (state.seaWorldY - l.y) * 0.45;
+        if (ry < 1080) drawGlow(ctx, SPRITES.warm, l.x, ry, s * 1.8, 0.18 * l.alpha);
+      }
+    }
+
+    // 展翅白鹭剪影
+    ctx.strokeStyle = 'rgba(255, 250, 240, 0.88)';
+    ctx.lineWidth = 2.1;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < cranes.length; i++) {
+      const c = cranes[i];
+      const wingY = Math.sin(c.flap) * c.span * 0.48;
+      const dir = Math.sign(c.vx) || 1;
+      ctx.beginPath();
+      ctx.moveTo(c.x - c.span * 0.7 * dir, c.y - wingY);
+      ctx.quadraticCurveTo(c.x - c.span * 0.2 * dir, c.y - wingY * 0.3 - 4, c.x, c.y);
+      ctx.quadraticCurveTo(c.x + c.span * 0.25 * dir, c.y - wingY * 0.3 - 4, c.x + c.span * 0.75 * dir, c.y - wingY * 0.85);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function renderParticlesAndShockwave() {
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      const a = clamp(p.life / p.maxLife, 0, 1);
+      const spr = SPRITES[p.sprite] || SPRITES.gold;
+      drawGlow(ctx, spr, p.x, p.y, p.size * (0.5 + 0.5 * a), a * 0.88);
+    }
+
+    if (state.dawnShockwave >= 0) {
+      const p = clamp(state.dawnShockwave / 2200, 0, 1);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.beginPath();
+      ctx.arc(state.sunWX, state.sunWY, state.dawnShockwave, 0, TAU);
+      ctx.strokeStyle = `rgba(255, 232, 168, ${(1 - p) * 0.65})`;
+      ctx.lineWidth = 26 * (1 - p) + 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function renderCustomCursor() {
+    const x = pointer.wx, y = pointer.wy;
+    const r = pointer.down ? 19 : 14;
+    drawGlow(ctx, state.actIdx === 1 ? SPRITES.cyan : SPRITES.gold, x, y, 28, 0.52);
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(state.ambientTime * 0.8);
+    ctx.strokeStyle = 'rgba(255, 236, 188, 0.82)';
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, TAU);
+    ctx.stroke();
+
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * TAU;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * (r - 3), Math.sin(a) * (r - 3));
+      ctx.lineTo(Math.cos(a) * (r + 4), Math.sin(a) * (r + 4));
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#fff9e6';
+    ctx.beginPath();
+    ctx.arc(0, 0, 2.3, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // =========================================================================
+  // 8. 动态叙事字幕表、四重终章判词与界面交互控制
+  // =========================================================================
+  const SUBTITLES = [
+    { start: 0.6,  end: 6.8,  text: () => '百年前巨晷崩裂，白昼沉入镜海，人间自此长夜如霜。' },
+    { start: 7.6,  end: 15.2, text: () => '守灯学徒小晷解开缆绳，独自划向沉没的昼火。' },
+    { start: 16.4, end: 24.5, text: () => '水下每一缕残存的微光，都曾是某个人间清晨的温度。' },
+    {
+      start: 25.5, end: 33.0,
+      text: () => state.embersGathered >= 3
+        ? '你自深水捧起的昼火汇聚成灯，孤舟不再独行。'
+        : '微弱的桅灯映着寒水，孤舟向远方的海峡驶去。'
+    },
+
+    { start: 34.8, end: 42.6, text: () => '驶入千丈风碑峡，封冻的古弦已沉默了整整一纪。' },
+    { start: 44.0, end: 52.8, text: () => '唯有风与指尖掠过之时，顽石才会记起花开的形状。' },
+    { start: 54.0, end: 62.0, text: () => '借一程逆流而上的长风，扁舟乘雾，直向云海之巅。' },
+    {
+      start: 63.0, end: 69.2,
+      text: () => (state.stringsPlucked >= 3 || state.windStrokesCount >= 2)
+        ? '群碑齐鸣，绝壁生春，万千流风托起远航的帆。'
+        : '寒风呼啸过寂静的石阵，小晷握紧灯杖，迎风而上。'
+    },
+
+    { start: 71.0, end: 79.0, text: () => '高天之上，崩碎的巨晷化作风暴，蚀影如雹倾落。' },
+    { start: 80.4, end: 88.8, text: () => '失序的时辰在漩涡中冲撞，欲将最后一点灯火吹熄。' },
+    { start: 90.2, end: 98.5, text: () => '纵使长夜倾塌，总有一道折光，肯挡在风雪之前。' },
+    {
+      start: 99.6, end: 107.0,
+      text: () => (state.ringsAligned >= 2 || state.shardsDeflected >= 5)
+        ? '铜环归位，折光成盾，风暴中央豁开通往日心的天门。'
+        : '风雹掠过孤舟，小晷俯身，以衣襟死死护住最后一星火种。'
+    },
+
+    { start: 109.0, end: 117.2, text: () => '风暴尽头万籁俱寂，破碎的太初日心悬于苍穹。' },
+    { start: 118.4, end: 127.0, text: () => '小晷高举灯杖——将一路拾起的微光，尽数归还天空。' },
+    { start: 128.2, end: 136.8, text: () => '裂痕并非终结，而是光线得以照进来的地方。' },
+    {
+      start: 138.0, end: 143.6,
+      text: () => state.kintsugiRatio >= 0.38
+        ? '——金缮合拢，万缕归昼，第零次黎明破晓而生！'
+        : '——孤火入隙，银白晨光，刺破百年漫漫长夜！'
+    },
+
+    {
+      start: 145.0, end: 153.2,
+      text: () => {
+        const endKey = evaluateEnding().key;
+        if (endKey === 'kintsugi') return '赤金晨曦漫过千檐港，沉睡百年的海面重新泛起暖浪。';
+        if (endKey === 'bloom') return '长风携花影吹遍海湾，千家窗棂次第亮起晨光。';
+        if (endKey === 'aegis') return '天晷铜环高悬澄澈苍穹，护佑人间岁岁晨昏不改。';
+        return '清冽的银白晨光静静洒落，孤舟归港，天地安然如初。';
+      }
+    },
+    {
+      start: 154.4, end: 163.2,
+      text: () => {
+        const active = (state.embersGathered + state.stringsPlucked + state.shardsDeflected + state.ringsAligned * 3 + (state.kintsugiRatio > 0.32 ? 5 : 0)) >= 3;
+        return active
+          ? '小晷立于舟首回望云端，向那阵曾与他同行的风，深深一揖。'
+          : '你未曾惊动这片海的一丝波澜，只作长夜尽头最安静的见证人。';
+      }
+    },
+    { start: 164.0, end: 168.0, text: () => '《修昼人》 · 终' }
+  ];
+
+  function evaluateEnding() {
+    const mend = state.kintsugiRatio;
+    const bloomScore = state.stringsPlucked * 1.4 + state.windStrokesCount * 1.2 + state.windowsLit * 0.5;
+    const shieldScore = state.ringsAligned * 4.5 + state.shardsDeflected * 0.9;
+    const totalAgency = state.embersGathered + bloomScore + shieldScore + (mend > 0.28 ? mend * 12 : 0);
+
+    if (totalAgency < 3.2) {
+      return {
+        key: 'witness',
+        title: '静默观星',
+        seal: ['静', '默', '观', '星'],
+        poem: '你未曾拨乱一缕海风，只以温柔的目光目送孤舟渡夜。小晷凭一星孤火叩开银白微明——被静静看见，亦是旅途的回响。'
+      };
+    }
+    if (mend >= 0.52 && (state.embersGathered >= 3 || totalAgency >= 14)) {
+      return {
+        key: 'kintsugi',
+        title: '金缮满昼',
+        seal: ['金', '缮', '满', '昼'],
+        poem: '你自深海捧起沉没的碎金，又以流金亲手弥合苍穹的裂痕。破碎百年的白昼因金缮而愈发璀璨，千檐万户皆沐赤金暖阳。'
+      };
+    }
+    if (shieldScore >= bloomScore && (state.ringsAligned >= 2 || state.shardsDeflected >= 6)) {
+      return {
+        key: 'aegis',
+        title: '守火孤盾',
+        seal: ['守', '火', '校', '晷'],
+        poem: '碎时风暴最烈之处，你化作舟前不灭的折光穹盾，拨正失序的天干铜环。澄澈苍穹重归法度，自此人间晨昏永固。'
+      };
+    }
+    return {
+      key: 'bloom',
+      title: '万物生春',
+      seal: ['万', '物', '生', '春'],
+      poem: '你的指尖拂亮沉睡的千家窗火，拨响风碑古弦，令荒寒绝壁重绽芳华。黎明乘着你绘出的长风归来，海湾万象更新。'
+    };
+  }
+
+  // DOM 引用
+  const introOverlay = document.getElementById('intro-overlay');
+  const startBtn = document.getElementById('start-btn');
+  const chapterTag = document.getElementById('chapter-tag');
+  const agencyPill = document.getElementById('agency-pill');
+  const subtitleMain = document.getElementById('subtitle-main');
+  const subtitleHint = document.getElementById('subtitle-hint');
+  const timelineTrack = document.getElementById('timeline-track');
+  const timelineFill = document.getElementById('timeline-fill');
+  const timelineHead = document.getElementById('timeline-head');
+  const timeReadout = document.getElementById('time-readout');
+  const muteBtn = document.getElementById('mute-btn');
+  const muteLabel = document.getElementById('mute-label');
+  const iconSoundOn = document.getElementById('icon-sound-on');
+  const iconSoundOff = document.getElementById('icon-sound-off');
+  const endingCard = document.getElementById('ending-card');
+  const endingTitle = document.getElementById('ending-title');
+  const endingSeal = document.getElementById('ending-seal');
+  const endingPoem = document.getElementById('ending-poem');
+  const statEmbers = document.getElementById('stat-embers');
+  const statBloom = document.getElementById('stat-bloom');
+  const statShield = document.getElementById('stat-shield');
+  const statMend = document.getElementById('stat-mend');
+  const replayBtn = document.getElementById('replay-btn');
+  const lingerBtn = document.getElementById('linger-btn');
+  const reopenCardBtn = document.getElementById('reopen-card-btn');
+
+  let lastSubtitleStr = '';
+  let lastHintStr = '';
+
+  function formatTime(sec) {
+    const s = Math.floor(clamp(sec, 0, FILM_DURATION));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+  }
+
+  function updateHUD() {
+    if (!state.started) return;
+    const t = state.filmTime;
+    const act = ACTS[state.actIdx];
+
+    if (chapterTag.textContent !== act.tag) {
+      chapterTag.textContent = act.tag;
+    }
+    chapterTag.classList.add('visible');
+
+    // 顶部实时手势反馈胶囊
+    if (state.agencyTimer > 0) {
+      if (agencyPill.textContent !== state.agencyText) {
+        agencyPill.textContent = state.agencyText;
+      }
+      agencyPill.classList.add('active');
+    } else {
+      agencyPill.classList.remove('active');
+    }
+
+    // 匹配当前时间轴字幕
+    let activeLine = '';
+    for (let i = 0; i < SUBTITLES.length; i++) {
+      const sub = SUBTITLES[i];
+      if (t >= sub.start && t <= sub.end) {
+        activeLine = sub.text();
+        break;
+      }
+    }
+    if (activeLine !== lastSubtitleStr) {
+      lastSubtitleStr = activeLine;
+      if (activeLine) {
+        subtitleMain.textContent = activeLine;
+        subtitleMain.classList.add('visible');
+      } else {
+        subtitleMain.classList.remove('visible');
+      }
+    }
+
+    // 每幕开场前 6.5 秒浮现极克制的金色操作提示，随后自然隐去不遮画面
+    const inActIntro = (t - act.start) >= 0.8 && (t - act.start) <= 7.4;
+    const desiredHint = inActIntro ? act.hint : '';
+    if (desiredHint !== lastHintStr) {
+      lastHintStr = desiredHint;
+      if (desiredHint) {
+        subtitleHint.textContent = desiredHint;
+        subtitleHint.classList.add('visible');
+      } else {
+        subtitleHint.classList.remove('visible');
+      }
+    }
+
+    // 进度条与时间读数
+    const pct = clamp((t / FILM_DURATION) * 100, 0, 100).toFixed(2) + '%';
+    timelineFill.style.width = pct;
+    timelineHead.style.left = pct;
+    timeReadout.textContent = `${formatTime(t)} / 02:48`;
+
+    // 抵达 02:48 呈现终章印记卡（背景世界依然持续鲜活可互动）
+    if (t >= FILM_DURATION && !state.ended) {
+      state.ended = true;
+      presentEndingCard();
+    }
+  }
+
+  function presentEndingCard() {
+    const info = evaluateEnding();
+    state.endingKey = info.key;
+    endingTitle.textContent = info.title;
+    endingPoem.textContent = info.poem;
+    endingSeal.innerHTML = info.seal.map((ch) => `<span>${ch}</span>`).join('');
+
+    statEmbers.textContent = `${state.embersGathered} 缕`;
+    statBloom.textContent = `${state.windowsLit + state.stringsPlucked + state.windStrokesCount} 处`;
+    statShield.textContent = `${state.shardsDeflected + state.ringsAligned} 次`;
+    statMend.textContent = `${Math.max(18, Math.round(state.kintsugiRatio * 100))}%`;
+
+    if (!state.cardDismissed) {
+      endingCard.classList.add('visible');
+      reopenCardBtn.classList.remove('show');
+    }
+  }
+
+  function seekTo(targetSec) {
+    if (!state.started) startFilm();
+    const clamped = clamp(targetSec, 0, FILM_DURATION);
+    state.filmTime = clamped;
+    state.prevFilmTime = clamped;
+    state.actIdx = getActIndex(clamped);
+
+    if (clamped < FILM_DURATION) {
+      state.ended = false;
+      endingCard.classList.remove('visible');
+      reopenCardBtn.classList.remove('show');
+    }
+
+    if (clamped < 138.0) {
+      state.dawnTriggered = false;
+      state.dawnAmt = 0;
+      state.dawnShockwave = -1;
+    } else {
+      if (!state.dawnTriggered) {
+        state.dawnTriggered = true;
+        if (cranes.length === 0) {
+          for (let i = 0; i < 6; i++) spawnCrane(220 + i * 240, 220 + (i % 3) * 70);
+        }
+      }
+      state.dawnAmt = 1;
+    }
+
+    // 同步木舟锚点并重置柔体链，防止跨章节跳转产生布料拉扯
+    if (clamped < 34) {
+      boat.x = lerp(460, 840, clamped / 34);
+      boat.y = 705;
+    } else if (clamped < 70) {
+      boat.x = lerp(840, 960, (clamped - 34) / 36);
+      boat.y = lerp(725, 565, (clamped - 34) / 36);
+    } else if (clamped < 108) {
+      boat.x = 960;
+      boat.y = 775;
+    } else if (clamped < 144) {
+      boat.x = 960;
+      boat.y = 700;
+    } else {
+      boat.x = 760;
+      boat.y = 704;
+    }
+    initBoatChains();
+    updateHUD();
+  }
+
+  function startFilm() {
+    if (state.started) return;
+    sound.unlock();
+    state.started = true;
+    introOverlay.classList.add('hidden');
+    updateHUD();
+  }
+
+  function restartFilm() {
+    sound.unlock();
+    endingCard.classList.remove('visible');
+    reopenCardBtn.classList.remove('show');
+    resetWorldState();
+    state.started = true;
+    lastSubtitleStr = '';
+    lastHintStr = '';
+    subtitleMain.classList.remove('visible');
+    subtitleHint.classList.remove('visible');
+    updateHUD();
+  }
+
+  // =========================================================================
+  // 9. 事件监听、自适应缩放与 60fps 主循环
+  // =========================================================================
+  function resizeAll() {
+    view.w = Math.max(320, window.innerWidth || 1920);
+    view.h = Math.max(240, window.innerHeight || 1080);
+    view.dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+    // 兼顾 1920x1080 全屏、笔记本屏幕与多模型并排分屏窗口 (如 960x1080)
+    const refW = view.w < view.h * 1.35 ? 1520 : 1920;
+    view.scale = Math.min(view.w / refW, view.h / 1080);
+
+    sceneCanvas.width = Math.floor(view.w * view.dpr);
+    sceneCanvas.height = Math.floor(view.h * view.dpr);
+    glSky.resize(view.w, view.h, view.dpr);
+  }
+
+  function updatePointerCoords(clientX, clientY) {
+    pointer.sx = clientX;
+    pointer.sy = clientY;
+    pointer.wx = screenToWorldX(clientX);
+    pointer.wy = screenToWorldY(clientY);
+    if (!pointer.inside) {
+      pointer.pwx = pointer.wx;
+      pointer.pwy = pointer.wy;
+      pointer.inside = true;
+    }
+  }
+
+  window.addEventListener('resize', resizeAll);
+
+  stageEl.addEventListener('pointermove', (e) => {
+    const onUI = Boolean(e.target.closest('.letterbox, #ending-card, #intro-overlay'));
+    pointer.overUI = onUI;
+    stageEl.classList.toggle('ui-cursor', onUI || !state.started);
+    updatePointerCoords(e.clientX, e.clientY);
+  });
+
+  stageEl.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.letterbox, #ending-card')) return;
+    if (!state.started) {
+      startFilm();
+      return;
+    }
+    sound.unlock();
+    updatePointerCoords(e.clientX, e.clientY);
+    pointer.pwx = pointer.wx;
+    pointer.pwy = pointer.wy;
+    pointer.down = true;
+
+    // 第三幕按下：优先拾取最近的未锁定天干铜环进行旋转校准
+    if (state.actIdx === 2) {
+      const cx = state.sunWX, cy = state.sunWY;
+      let bestIdx = -1;
+      let bestDist = 88;
+      for (let i = 0; i < celestialRings.length; i++) {
+        const ring = celestialRings[i];
+        if (ring.locked) continue;
+        // 检测与椭圆环轨迹的最近距离
+        for (let s = 0; s < 32; s++) {
+          const pt = projectRingPoint(ring, (s / 32) * TAU, cx, cy);
+          const d = Math.hypot(pointer.wx - pt.x, pointer.wy - pt.y);
+          if (d < bestDist) {
+            bestDist = d;
+            bestIdx = i;
+          }
+        }
+      }
+      if (bestIdx >= 0) {
+        pointer.dragRingIdx = bestIdx;
+        pointer.dragPrevAng = Math.atan2(pointer.wy - cy, pointer.wx - cx);
+        notifyAgency('旋转铜环对准黄金缺口');
+      }
+    }
+
+    // 第五幕（含片尾留驻状态）：轻点晨空放飞祈愿天灯与白鹭
+    if (state.filmTime >= 140) {
+      state.epilogueLanterns++;
+      spawnSkyLantern(pointer.wx, pointer.wy, true);
+      if (state.epilogueLanterns % 2 === 1) {
+        spawnCrane(pointer.wx - 35, pointer.wy - 18);
+      }
+      sound.playLanternBell();
+      notifyAgency('放飞晨曦祈愿灯');
+    }
+  });
+
+  window.addEventListener('pointerup', () => {
+    pointer.down = false;
+    pointer.dragRingIdx = -1;
+  });
+
+  window.addEventListener('pointerleave', () => {
+    pointer.inside = false;
+    pointer.down = false;
+    pointer.dragRingIdx = -1;
+  });
+
+  introOverlay.addEventListener('click', (e) => {
+    e.stopPropagation();
+    startFilm();
+  });
+  startBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    startFilm();
+  });
+
+  function toggleMute() {
+    sound.setMuted(!sound.muted);
+    const isMuted = sound.muted;
+    muteLabel.textContent = isMuted ? '已静音' : '声音：开';
+    iconSoundOn.style.display = isMuted ? 'none' : 'block';
+    iconSoundOff.style.display = isMuted ? 'block' : 'none';
+  }
+
+  muteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleMute();
+    if (state.started && !sound.muted) {
+      sound.unlock();
+    }
+  });
+
+  timelineTrack.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const rect = timelineTrack.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const ratio = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+    seekTo(ratio * FILM_DURATION);
+  });
+
+  replayBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    restartFilm();
+  });
+
+  lingerBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.cardDismissed = true;
+    endingCard.classList.remove('visible');
+    reopenCardBtn.classList.add('show');
+    notifyAgency('轻点晨空继续放飞天灯');
+  });
+
+  reopenCardBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.cardDismissed = false;
+    endingCard.classList.add('visible');
+    reopenCardBtn.classList.remove('show');
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'm' || e.key === 'M') {
+      toggleMute();
+    } else if (e.key === ' ' && !state.started) {
+      e.preventDefault();
+      startFilm();
+    }
+  });
+
+  // 主帧循环
+  let lastNow = performance.now();
+
+  function frame(now) {
+    const rawDt = (now - lastNow) / 1000;
+    lastNow = now;
+    const dt = clamp(rawDt, 0.001, 0.05);
+    const filmStep = Math.min(Math.max(rawDt, 0), 0.1);
+
+    state.ambientTime += dt;
+    if (state.started && state.filmTime < FILM_DURATION) {
+      state.prevFilmTime = state.filmTime;
+      state.filmTime = Math.min(FILM_DURATION, state.filmTime + filmStep);
+    } else {
+      state.prevFilmTime = state.filmTime;
+    }
+
+    // 逐帧精确光标速度与完整扫掠线段（确保高速拂过古弦、水面与裂痕不漏判）
+    const instVx = (pointer.wx - pointer.pwx) / dt;
+    const instVy = (pointer.wy - pointer.pwy) / dt;
+    pointer.vx = lerp(pointer.vx * 0.72, instVx, 0.68);
+    pointer.vy = lerp(pointer.vy * 0.72, instVy, 0.68);
+    pointer.speed = Math.hypot(pointer.vx, pointer.vy);
+
+    updateWorld(dt);
+    pointer.pwx = pointer.wx;
+    pointer.pwy = pointer.wy;
+
+    sound.update(state.filmTime, state.started, state.stormAmt, state.dawnAmt, state.warmthAmt);
+
+    // 渲染第 1 层：WebGL2 实时天穹与镜海着色器
+    const seaScreenRatio = clamp(worldToScreenY(state.seaWorldY) / Math.max(view.h, 1), -0.25, 1.35);
+    const sunUVX = worldToScreenX(state.sunWX) / Math.max(view.w, 1);
+    const sunUVY = worldToScreenY(state.sunWY) / Math.max(view.h, 1);
+    const boatUVX = worldToScreenX(boat.x + 32) / Math.max(view.w, 1);
+    const boatUVY = worldToScreenY(boat.y - 48) / Math.max(view.h, 1);
+
+    glSky.render({
+      time: state.ambientTime,
+      seaLevel: seaScreenRatio,
+      storm: state.stormAmt,
+      dawn: state.dawnAmt,
+      warmth: state.warmthAmt,
+      emerald: state.emeraldAmt,
+      sunX: sunUVX,
+      sunY: sunUVY,
+      sunMend: state.kintsugiRatio,
+      mx: clamp(pointer.sx / Math.max(view.w, 1), 0, 1),
+      my: clamp(pointer.sy / Math.max(view.h, 1), 0, 1),
+      mVel: clamp(pointer.speed / 1800, 0, 1),
+      mDown: pointer.down ? 1.0 : 0.0,
+      bx: boatUVX,
+      by: boatUVY,
+      bLight: clamp(boat.lanternPower * 0.85, 0.15, 1.2),
+      flash: state.lightningFlash
+    });
+
+    // 渲染第 2 层：高清 2D 叙事世界与交互实体
+    renderScene();
+
+    // 刷新字幕、章节与终章印记
+    updateHUD();
+
+    requestAnimationFrame(frame);
+  }
+
+  // 启动初始化
+  resizeAll();
+  resetWorldState();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
